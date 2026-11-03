@@ -79,6 +79,7 @@ export function features(lm, W, H) {
     wristHip: dist(S.wr, S.hip) / torso,
     wristNearHip: dist(S.wr, S.hip) / len,
     supportOff: Math.abs(S.sh.x - support.x) / len,
+    forearmFlat: forearm,
     hipHighest: S.hip.y < S.sh.y && S.hip.y < end.y,
   };
 }
@@ -123,6 +124,16 @@ export const EXERCISES = {
       { k: "hips", at: "worst", w: 0.25, fn: f => f.hip, good: 95, bad: 130, msg: "Подними таз выше" },
       { k: "legs", at: "worst", w: 0.15, fn: f => f.knee, good: 168, bad: 145, msg: "Держи ноги прямыми" },
       { k: "lock", at: "top", w: 0.1, good: 165, bad: 145, msg: "Выпрямляй руки" }, TEMPO] },
+  row: { name: "Австралийские подтягивания", type: "reps", view: "Камера сбоку", metric: f => f.elbow, down: 140, up: 155, req: "depth",
+    checks: [
+      { k: "depth", at: "best", w: 0.4, fn: f => f.elbow, good: 80, bad: 115, msg: "Тяни грудь к перекладине" },
+      { k: "line", at: "worst", w: 0.3, fn: f => f.line, good: 168, bad: 150, msg: "Держи тело прямо, не провисай тазом" },
+      { k: "lock", at: "top", w: 0.2, good: 162, bad: 140, msg: "Выпрямляй руки внизу" }, TEMPO] },
+  bridge: { name: "Ягодичный мост", type: "reps", view: "Камера сбоку, на полу", metric: f => 300 - f.hip, down: 145, up: 158, req: "height",
+    checks: [
+      { k: "height", at: "best", w: 0.6, fn: f => f.hip, good: 170, bad: 152, msg: "Поднимай таз выше, сожми ягодицы" },
+      { k: "lock", at: "top", w: 0.15, good: 165, bad: 150, msg: "Опускай таз до пола" },
+      { k: "tempo", at: "tempo", w: 0.25, good: 1.4, bad: 0.6, msg: "Медленнее, задержись наверху" }] },
   legraise: { name: "Подъём ног в висе", type: "reps", view: "Камера сбоку", metric: f => f.hip, down: 150, up: 160, req: "height",
     checks: [
       { k: "height", at: "best", w: 0.5, fn: f => f.hip, good: 90, bad: 130, msg: "Поднимай ноги выше, до параллели" },
@@ -130,11 +141,17 @@ export const EXERCISES = {
       { k: "lock", at: "top", w: 0.1, good: 170, bad: 150, msg: "Опускай ноги полностью" },
       { ...TEMPO, msg: "Без рывков, медленнее" }] },
 
-  plank: { name: "Планка", type: "hold", view: "Камера сбоку, на полу",
+  plank: { name: "Планка на прямых руках", type: "hold", view: "Камера сбоку, на полу",
+    checks: [
+      { k: "line", w: 0.55, fn: f => f.line, good: 170, bad: 152, msg: sagMsg },
+      { k: "legs", w: 0.15, fn: f => f.knee, good: 168, bad: 150, msg: "Выпрями колени" },
+      { k: "arms", w: 0.1, fn: f => f.elbow, good: 160, bad: 140, msg: "Выпрями руки" },
+      { k: "stack", w: 0.2, fn: f => f.supportOff, good: 0.05, bad: 0.16, msg: "Плечи над запястьями" }] },
+  elbowplank: { name: "Планка на локтях", type: "hold", view: "Камера сбоку, на полу",
     checks: [
       { k: "line", w: 0.6, fn: f => f.line, good: 170, bad: 152, msg: sagMsg },
       { k: "legs", w: 0.2, fn: f => f.knee, good: 168, bad: 150, msg: "Выпрями колени" },
-      { k: "stack", w: 0.2, fn: f => f.supportOff, good: 0.04, bad: 0.15, msg: "Плечи над локтями" }] },
+      { k: "stack", w: 0.2, fn: f => f.supportOff, good: 0.05, bad: 0.15, msg: "Локти под плечами" }] },
   sideplank: { name: "Боковая планка", type: "hold", view: "Камера спереди",
     checks: [
       { k: "line", w: 0.7, fn: f => f.line, good: 168, bad: 148, msg: "Подними таз, тело в одну линию" },
@@ -210,6 +227,11 @@ export const PROBLEM_TEXT = {
   jump: null,
 };
 
+// ---------- Связки: элементы, которые чередуются без сброса счётчиков ----------
+// Например: стоишь в планке → отжался пару раз → снова планка. Время планки идёт дальше, отжимания считаются.
+export const FAMILIES = [["plank", "pushup"], ["hang", "pullup", "legraise"]];
+export const familyOf = k => FAMILIES.find(g => g.includes(k)) || (k ? [k] : []);
+
 // ---------- Распознавание элемента по одному кадру ----------
 // rng: размах движения суставов за последние ~1.5 с {elbow, knee, hip}
 export function classify(f, rng) {
@@ -217,19 +239,24 @@ export function classify(f, rng) {
   const horiz = f.bodyH < 35;
   // вниз головой
   if (f.torsoV > 135 && f.bodyH > 55) return "handstand";
+  // лёжа на спине, колени согнуты — ягодичный мост
+  if (f.bodyH < 35 && f.torsoV > 50 && f.knee < 125 && f.noseUp && Math.abs(f.wristBelowSh) < 0.18 && f.feetAboveHands < 0.15) return "bridge";
   if (f.hipHighest && f.hip < 125 && f.wristBelowSh > 0.1 && f.torsoV > 60) return "pike";
+  // наклонное тело лицом вверх, руки на перекладине над собой — австралийские подтягивания
+  if (f.noseUp && f.wristBelowSh < -0.15 && f.torsoV > 45 && f.bodyH < 55 && f.bodyH >= 12 && (rng.elbow > 25 || f.elbow < 140)) return "row";
   // корпус горизонтально
   if (horiz && f.torsoV > 50) {
     if (f.wristStack > 0.3) return "flag";
     if (f.shoulderStack > 0.18 && f.shoulderWidth < 0.12) return "sideplank";
     if (f.wristHip > 1.6 && Math.abs(f.wristBelowSh) < 0.18 && f.noseUp) return "hollow";
     if (f.wristBelowSh < -0.2) return f.noseUp ? "frontlever" : "backlever";
+    if (f.forearmFlat && rng.elbow < 20) return "elbowplank";
     if (f.wristBelowSh > 0.15) {
       if (f.feetAboveHands > 0.2 && f.bodyH < 15 && f.elbow > 145) return "planche";
       if (rng.elbow > 25 || f.elbow < 130) return "pushup";
       return "plank";
     }
-    if (f.feetAboveHands < 0.12 && f.elbow < 125) return "plank"; // планка на предплечьях
+    if (f.feetAboveHands < 0.12 && f.elbow < 125) return "elbowplank";
     return null;
   }
   // корпус вертикально
@@ -277,7 +304,7 @@ export class RepEngine {
   constructor(key) { this.key = key; this.def = EXERCISES[key]; this.reset(); }
   reset() { this.reps = 0; this.scores = []; this.lastScore = null; this.lastRepT = -1e9; this.interrupt(); }
   // сброс текущей фазы (после ненадёжных кадров) — начатый повтор не засчитывается
-  interrupt() { this.state = "up"; this.topMax = null; this.rep = null; this.buf = []; this.speeds = []; this.prevRaw = null; this.prevT = null; this.belowT = null; this.aboveT = null; this.liveScore = 1; }
+  interrupt() { this.state = "up"; this.topMax = null; this.rep = null; this.buf = []; this.lastM = null; this.speeds = []; this.prevRaw = null; this.prevT = null; this.belowT = null; this.aboveT = null; this.liveScore = 1; }
   // отмена повторов (команда «нет»)
   undoTo(n) { this.reps = Math.min(this.reps, n); this.scores.length = this.reps; this.lastScore = this.scores.at(-1) ?? null; this.interrupt(); }
   // возвращает список событий: {type:'rep', n, score, tip} | {type:'cue', key, text} | {type:'partial', text}
@@ -295,7 +322,7 @@ export class RepEngine {
       this.interrupt(); return [{ type: "noise" }];
     }
     this.buf.push(raw); if (this.buf.length > 5) this.buf.shift();
-    const m = [...this.buf].sort((a, b) => a - b)[this.buf.length >> 1];
+    const m = [...this.buf].sort((a, b) => a - b)[this.buf.length >> 1]; this.lastM = m;
     if (this.state === "up") {
       this.topMax = Math.max(this.topMax ?? m, m);
       if (m < d.down) {                         // фаза «вниз» должна продержаться ≥120 мс
@@ -351,6 +378,8 @@ export class RepEngine {
   }
   get avg() { return this.scores.length ? Math.round(this.scores.reduce((a, b) => a + b, 0) / this.scores.length) : null; }
   get busy() { return this.state === "down"; }
+  // в движении: не в верхней точке (повтор начинается или заканчивается)
+  get moving() { return this.state === "down" || (this.lastM != null && this.lastM < this.def.up) || (this.prevRaw != null && this.prevRaw < this.def.up); }
   get count() { return this.reps; }
 }
 
@@ -401,10 +430,13 @@ const ALIASES = [
   ["pushup", ["отжиман", "отжимания", "отжимание"]],
   ["squat", ["присед"]],
   ["lunge", ["выпад"]],
+  ["row", ["австралийск", "горизонтальн", "тяга лежа", "тяга лёжа"]],
   ["pullup", ["подтяг"]],
   ["legraise", ["подъём ног", "подъем ног", "ноги в висе", "подъемы ног", "подъёмы ног"]],
   ["sideplank", ["боковая планка", "боковую планку", "боковой планк"]],
+  ["elbowplank", ["планка на локтях", "планку на локтях", "на локтях", "на предплечьях"]],
   ["plank", ["планк"]],
+  ["bridge", ["мост", "ягодичн"]],
   ["lsit", ["уголок", "уголка", "л сит", "эл сит", "l-sit", "lsit"]],
   ["handstand", ["стойка на руках", "стойку на руках", "стойка", "хендстенд"]],
   ["frontlever", ["передний вис", "фронт левер", "фронтлевер", "передний рычаг"]],
@@ -426,8 +458,99 @@ export function parseCommand(text) {
   if (/ (продолж|дальше|поехали|старт|начали)/.test(t)) return { cmd: "resume" };
   const k = findAlias(t); return k ? { cmd: "set", key: k } : null;
 }
-function findAlias(t) {
+export function findAlias(t) {
   const norm = t.replace(/ё/g, "е");
   for (const [k, words] of ALIASES) if (words.some(w => norm.includes(w.replace(/ё/g, "е")))) return k;
   return null;
+}
+
+// ============================================================
+//  Сессия тренировки: распознавание + связки + отмена.
+//  Используется и приложением, и тестами.
+// ============================================================
+export class Session {
+  constructor() { this.reset(); }
+  reset() {
+    this.engines = {}; this.rec = new Recognizer(); this.hist = [];
+    this.mode = "auto"; this.cur = null; this.blocked = new Map(); this.atDetect = {}; this.noiseT = [];
+    this.lastGood = null; this.errors = {}; this.errT = {};   // errors[ex][текст] = сколько раз
+  }
+  engine(k) { return this.engines[k] ||= makeEngine(k); }
+  get family() { return familyOf(this.cur); }
+  get busy() { return this.family.some(k => this.engine(k).busy); }
+  markDetect() { this.atDetect = {}; for (const k of this.family) this.atDetect[k] = this.engine(k).count; }
+  setManual(k) { this.mode = "manual"; this.cur = k; this.rec.clear(); this.markDetect(); }
+  setAuto() { this.mode = "auto"; this.cur = null; this.rec.clear(); this.hist = []; }
+  // «Нет»: откатить всё, что насчитано с момента распознавания, и временно не предлагать этот элемент
+  reject(t) {
+    const k = this.cur; if (!k) return null;
+    for (const m of this.family) { const e = this.engine(m); if (m in this.atDetect) e.undoTo(this.atDetect[m]); }
+    this.blocked.set(k, t + 20000);
+    this.setAuto();
+    return k;
+  }
+  // кадр, которому нельзя доверять
+  bad(t) {
+    const ev = [];
+    for (const k of this.family) {
+      const e = this.engine(k);
+      if (e.def.type === "hold" && this.lastGood) ev.push(...e.update(this.lastGood, t, false).map(x => ({ ...x, ex: k })));
+      else e.interrupt();
+    }
+    this.hist = []; this.rec.clear();
+    return ev;
+  }
+  // нормальный кадр → события {type, ex, ...} и switched (новый распознанный элемент)
+  frame(f, t) {
+    this.lastGood = f;
+    this.hist.push({ t, f }); while (t - this.hist[0].t > 1500) this.hist.shift();
+    let cand = null, switched = null;
+    if (this.mode === "auto") {
+      const rg = key => { let a = Infinity, b = -Infinity; for (const h of this.hist) { a = Math.min(a, h.f[key]); b = Math.max(b, h.f[key]); } return b - a; };
+      cand = classify(f, { elbow: rg("elbow"), knee: rg("knee"), hip: rg("hip") });
+      if (cand && this.blocked.get(cand) > t) cand = null;
+      const det = this.rec.push(cand, t);
+      if (det && det !== this.cur && !(this.cur && this.busy)) {
+        const same = this.family.includes(det);
+        this.cur = det;
+        if (!same) {                                   // новый элемент: запоминаем точку отката и «доигрываем» начало движения
+          switched = det; this.markDetect();
+          for (const h of this.hist.slice(0, -1)) for (const k of this.family) this.engine(k).update(h.f, h.t, true);
+        }
+      }
+    }
+    const ev = [];
+    const fam = this.family;
+    // сначала счётчики повторов, потом удержания — чтобы удержание знало, идёт ли сейчас повтор
+    for (const k of [...fam].sort((a, b) => (this.engine(a).def.type === "reps" ? 0 : 1) - (this.engine(b).def.type === "reps" ? 0 : 1))) {
+      const e = this.engine(k);
+      const inPose = this.mode === "manual" ? true : (cand ? fam.includes(cand) : e.count > 0 || k === this.cur);
+      // пока в связке идёт повтор (например, отжимание из планки), удержание не делает замечаний
+      const partnerBusy = e.def.type === "hold" && fam.some(m => m !== k && this.engine(m).def.type === "reps" && this.engine(m).moving);
+      for (const x of e.update(f, t, inPose)) {
+        if (partnerBusy && x.type === "cue") continue;
+        ev.push({ ...x, ex: k });
+        if (x.type === "cue" || (x.type === "rep" && x.tip) || x.type === "partial") {
+          // одна и та же ошибка считается не чаще раза в 4 секунды (а не на каждом кадре)
+          const txt = x.text || x.tip, id = k + "|" + txt;
+          if (x.type !== "cue" || !(t - (this.errT[id] ?? -1e9) < 4000)) (this.errors[k] ||= {})[txt] = (this.errors[k][txt] || 0) + 1;
+          this.errT[id] = t;
+        }
+        if (x.type === "noise") {
+          this.rec.clear(); this.noiseT = this.noiseT.filter(n => t - n < 3000); this.noiseT.push(t);
+          const nothing = fam.every(m => this.engine(m).count === (this.atDetect[m] ?? 0));
+          if (this.mode === "auto" && this.noiseT.length >= 3 && nothing) { this.cur = null; this.noiseT = []; }
+        }
+      }
+    }
+    return { ev, switched, cand };
+  }
+  // итоги для экрана и для ИИ-тренера
+  summary() {
+    return Object.values(this.engines).filter(e => e.def.type === "reps" ? e.reps > 0 : e.total >= 1).map(e => ({
+      key: e.key, name: e.def.name, type: e.def.type,
+      reps: e.reps, total: e.total, best: e.best, avg: e.avg,
+      errors: Object.entries(this.errors[e.key] || {}).sort((a, b) => b[1] - a[1]).slice(0, 3),
+    }));
+  }
 }

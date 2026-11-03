@@ -13,74 +13,135 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
-  :root { --bg:#0f1115; --panel:rgba(20,23,30,.78); --text:#f1f3f7; --muted:#9aa3b2; --good:#3ddc84; --mid:#ffc94d; --bad:#ff5c5c; --accent:#5b9dff;
-          --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px); --sl:env(safe-area-inset-left,0px); --sr:env(safe-area-inset-right,0px); }
+  :root { --bg:#0f1115; --card:#181c25; --line:#252b38; --panel:rgba(20,23,30,.78); --text:#f1f3f7; --muted:#9aa3b2; --good:#3ddc84; --mid:#ffc94d; --bad:#ff5c5c; --accent:#5b9dff;
+          --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px); --sl:env(safe-area-inset-left,0px); --sr:env(safe-area-inset-right,0px); --tabh:62px; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body { margin:0; height:100%; background:#000; color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden; overscroll-behavior:none; }
-  #app { position:fixed; inset:0; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden; overscroll-behavior:none; }
+  button { font-family:inherit; }
+  .screen { position:fixed; left:0; right:0; top:0; bottom:calc(var(--tabh) + var(--sb)); display:none; }
+  .screen.active { display:block; }
+
+  /* ===== нижние вкладки ===== */
+  .tabs { position:fixed; left:0; right:0; bottom:0; height:calc(var(--tabh) + var(--sb)); padding-bottom:var(--sb); background:#0b0d12; border-top:1px solid var(--line); display:flex; z-index:20; }
+  .tabs button { flex:1; border:0; background:none; color:var(--muted); font-size:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer; }
+  .tabs button b { font-size:22px; font-weight:400; line-height:1; }
+  .tabs button.on { color:var(--text); }
+  .tabs button.on b { transform:scale(1.08); }
+
+  /* ===== тренировка ===== */
+  #tab-train { background:#000; overflow:hidden; }
   video, #cv { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   .mirror { transform:scaleX(-1); }
-
-  /* верхняя панель */
   .top { position:absolute; top:calc(var(--st) + 10px); left:calc(var(--sl) + 10px); right:calc(var(--sr) + 10px); display:flex; gap:8px; align-items:center; z-index:5; }
   .chip { flex:1; min-width:0; position:relative; background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:14px; padding:9px 12px; }
-  .chip .mode { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .chip .mode { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .chip .name { font-size:17px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .chip select { position:absolute; inset:0; opacity:0; width:100%; font-size:16px; cursor:pointer; }
   .ibtn { flex:none; width:46px; height:46px; border-radius:14px; border:0; background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); color:var(--text); font-size:20px; cursor:pointer; }
-
+  .ibtn.off { opacity:.45; }
+  @media (max-width:400px) { .ibtn { width:42px; height:42px; font-size:18px; } .top { gap:6px; } }
   .nope { position:absolute; z-index:5; left:calc(var(--sl) + 10px); top:calc(var(--st) + 72px); display:none; align-items:center; border:0; border-radius:12px; padding:10px 14px;
           background:rgba(120,30,30,.8); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); color:#fff; font-size:15px; font-weight:700; cursor:pointer; }
-  @media (max-width:400px) { .ibtn { width:42px; height:42px; font-size:18px; } .top { gap:6px; } }
-  .ibtn.off { opacity:.45; }
-  .paused { position:absolute; inset:0; z-index:6; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); font-size:30px; font-weight:800; flex-direction:column; gap:12px; }
-  .paused small { font-size:15px; font-weight:500; color:var(--muted); }
-  /* показатели */
   .hud { position:absolute; right:calc(var(--sr) + 12px); top:calc(var(--st) + 68px); display:flex; flex-direction:column; align-items:flex-end; gap:10px; z-index:4; pointer-events:none; }
   .card { background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:18px; padding:10px 14px; text-align:center; min-width:112px; }
   .count { font-size:54px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
   .lbl { font-size:12px; color:var(--muted); margin-top:3px; }
+  .fam { font-size:14px; font-weight:650; text-align:left; line-height:1.5; display:none; }
   .ring { position:relative; width:112px; height:112px; }
   .ring svg { width:100%; height:100%; transform:rotate(-90deg); }
   .ring .pct { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
   .ring .pct b { font-size:25px; font-weight:800; font-variant-numeric:tabular-nums; }
   .ring .pct span { font-size:11px; color:var(--muted); }
   .avg { font-size:13px; color:var(--muted); }
-
-  /* подсказка */
-  .cue { position:absolute; left:calc(var(--sl) + 12px); right:calc(var(--sr) + 12px); bottom:calc(var(--sb) + 14px); z-index:4; background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  .cue { position:absolute; left:calc(var(--sl) + 12px); right:calc(var(--sr) + 12px); bottom:12px; z-index:4; background:rgba(20,23,30,.95);
          border-radius:16px; padding:14px 16px; font-size:19px; font-weight:650; border-left:5px solid var(--accent); transition:opacity .25s; opacity:0; pointer-events:none; }
-  .cue.show { opacity:1; background:rgba(20,23,30,.95); }
-  .cue.show ~ .hintline, .hintline.hide { opacity:0; }
-  .hintline { position:absolute; left:calc(var(--sl) + 12px); bottom:calc(var(--sb) + 14px); z-index:3; font-size:13px; color:var(--muted); background:var(--panel); padding:7px 11px; border-radius:10px; max-width:70%; }
-
-  /* стартовый экран */
-  .start { position:absolute; inset:0; z-index:10; background:radial-gradient(circle at 50% 30%, #1d2533, #0b0d11 70%); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:calc(var(--st) + 24px) 24px calc(var(--sb) + 24px); text-align:center; gap:18px; overflow:auto; }
-  .start h1 { margin:0; font-size:28px; }
+  .cue.show { opacity:1; }
+  .hintline { position:absolute; left:calc(var(--sl) + 12px); bottom:12px; z-index:3; font-size:13px; color:var(--muted); background:var(--panel); padding:7px 11px; border-radius:10px; max-width:70%; transition:opacity .2s; }
+  .hintline.hide { opacity:0; }
+  .paused { position:absolute; inset:0; z-index:6; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); font-size:30px; font-weight:800; flex-direction:column; gap:12px; }
+  .paused small { font-size:15px; font-weight:500; color:var(--muted); }
+  .start { position:absolute; inset:0; z-index:10; background:radial-gradient(circle at 50% 30%, #1d2533, #0b0d11 70%); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:calc(var(--st) + 20px) 22px 20px; text-align:center; gap:16px; overflow:auto; }
+  .start h1 { margin:0; font-size:26px; }
   .start p { margin:0; color:var(--muted); font-size:15px; line-height:1.5; max-width:420px; }
-  .go { border:0; border-radius:999px; background:var(--accent); color:#fff; font-size:22px; font-weight:750; padding:20px 46px; cursor:pointer; box-shadow:0 10px 30px rgba(91,157,255,.35); }
+  .go { border:0; border-radius:999px; background:var(--accent); color:#fff; font-size:22px; font-weight:750; padding:18px 46px; cursor:pointer; box-shadow:0 10px 30px rgba(91,157,255,.35); }
   .go:disabled { opacity:.6; }
-  .steps { text-align:left; font-size:14px; color:#cfd5df; line-height:1.7; background:rgba(255,255,255,.05); border-radius:14px; padding:12px 16px; max-width:420px; }
-  .err { color:var(--bad); font-size:14px; max-width:420px; }
-
-  /* итоги */
-  .sheet { position:absolute; left:0; right:0; bottom:0; z-index:8; background:#151922; border-radius:22px 22px 0 0; padding:18px 18px calc(var(--sb) + 18px); max-height:70%; overflow:auto; transform:translateY(105%); transition:transform .25s; }
+  .steps { text-align:left; font-size:14px; color:#cfd5df; line-height:1.65; background:rgba(255,255,255,.05); border-radius:14px; padding:12px 16px; max-width:420px; }
+  .err { color:var(--bad); font-size:14px; max-width:420px; white-space:pre-line; }
+  .sheet { position:absolute; left:0; right:0; bottom:0; z-index:8; background:#151922; border-radius:22px 22px 0 0; padding:18px; max-height:75%; overflow:auto; transform:translateY(105%); transition:transform .25s; }
   .sheet.open { transform:none; }
-  .sheet h2 { margin:0 0 10px; font-size:19px; display:flex; justify-content:space-between; align-items:center; }
+  .sheet h2 { margin:0 0 10px; font-size:19px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .sheet table { width:100%; border-collapse:collapse; font-size:15px; }
-  .sheet td { padding:9px 4px; border-bottom:1px solid #232835; }
+  .sheet td { padding:9px 4px; border-bottom:1px solid var(--line); }
   .sheet td:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .sheet .empty { color:var(--muted); font-size:14px; padding:10px 0; }
+  .empty { color:var(--muted); font-size:14px; padding:10px 0; }
   .sbtn { border:0; border-radius:12px; padding:10px 14px; background:#262c3a; color:var(--text); font-size:15px; cursor:pointer; }
+  .sbtn.primary { background:var(--accent); color:#fff; font-weight:650; }
   .q-good { color:var(--good); } .q-mid { color:var(--mid); } .q-bad { color:var(--bad); }
-  @media (orientation:landscape) and (max-height:500px) { .ring { width:92px; height:92px; } .ring .pct b { font-size:24px; } .count { font-size:42px; } .card { min-width:96px; padding:8px 12px; } .hud { top:calc(var(--st) + 64px); } }
+  @media (orientation:landscape) and (max-height:500px) { :root { --tabh:50px; } .tabs button b { font-size:18px; } .tabs button { flex-direction:row; gap:6px; font-size:13px; }
+    .ring { width:92px; height:92px; } .ring .pct b { font-size:22px; } .count { font-size:42px; } .card { min-width:96px; padding:8px 12px; } .hud { top:calc(var(--st) + 64px); } }
+
+  /* ===== страницы (упражнения, ИИ) ===== */
+  .page { overflow-y:auto; -webkit-overflow-scrolling:touch; padding:calc(var(--st) + 14px) calc(var(--sr) + 14px) 18px calc(var(--sl) + 14px); }
+  .page h1 { font-size:24px; margin:4px 2px 12px; display:flex; justify-content:space-between; align-items:center; }
+  .pills { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; scrollbar-width:none; }
+  .pills::-webkit-scrollbar { display:none; }
+  .pill { flex:none; border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:999px; padding:8px 14px; font-size:14px; cursor:pointer; white-space:nowrap; }
+  .pill.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .ex { background:var(--card); border:1px solid var(--line); border-radius:16px; margin-bottom:10px; overflow:hidden; }
+  .ex > summary { list-style:none; padding:14px 16px; cursor:pointer; display:flex; gap:12px; align-items:center; }
+  .ex > summary::-webkit-details-marker { display:none; }
+  .ex .t { flex:1; min-width:0; }
+  .ex .t b { font-size:16px; display:block; }
+  .ex .t span { font-size:13px; color:var(--muted); display:block; margin-top:3px; }
+  .badge { font-size:11px; padding:3px 8px; border-radius:999px; white-space:nowrap; }
+  .lv1 { background:rgba(61,220,132,.15); color:var(--good); } .lv2 { background:rgba(255,201,77,.15); color:var(--mid); } .lv3 { background:rgba(255,92,92,.15); color:var(--bad); }
+  .ex .body { padding:0 16px 16px; font-size:14px; line-height:1.55; color:#d6dbe4; }
+  .ex .body h4 { margin:12px 0 4px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .ex .body ol, .ex .body ul { margin:0; padding-left:20px; }
+  .ex .acts { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .stat { font-size:13px; color:var(--muted); margin-top:8px; }
+
+  /* чат */
+  #tab-ai { display:none; flex-direction:column; }
+  #tab-ai.active { display:flex; }
+  .ai-head { padding:calc(var(--st) + 12px) calc(var(--sr) + 14px) 8px calc(var(--sl) + 14px); display:flex; align-items:center; justify-content:space-between; }
+  .ai-head h1 { margin:0; font-size:22px; }
+  .ai-head small { display:block; font-size:12px; color:var(--muted); font-weight:400; margin-top:2px; }
+  .msgs { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:6px calc(var(--sr) + 14px) 10px calc(var(--sl) + 14px); display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:88%; padding:10px 14px; border-radius:18px; font-size:15px; line-height:1.5; word-wrap:break-word; }
+  .msg p { margin:0 0 6px; } .msg p:last-child { margin:0; } .msg ul { margin:4px 0 6px; padding-left:20px; }
+  .msg.me { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:6px; }
+  .msg.bot { align-self:flex-start; background:var(--card); border:1px solid var(--line); border-bottom-left-radius:6px; }
+  .msg.bot .tools { margin-top:6px; display:flex; gap:6px; }
+  .msg.bot .tools button { border:0; background:none; color:var(--muted); font-size:13px; padding:2px 4px; cursor:pointer; }
+  .msg.err { border-color:rgba(255,92,92,.5); }
+  .setup { background:linear-gradient(135deg,#1b2a45,#1a1f2b); border:1px solid #2c3d5e; border-radius:16px; padding:14px 16px; font-size:14px; line-height:1.55; }
+  .setup b { font-size:15px; }
+  .quick { display:flex; gap:8px; overflow-x:auto; padding:4px calc(var(--sr) + 14px) 8px calc(var(--sl) + 14px); scrollbar-width:none; }
+  .quick::-webkit-scrollbar { display:none; }
+  .inrow { display:flex; gap:8px; padding:8px calc(var(--sr) + 12px) 10px calc(var(--sl) + 12px); border-top:1px solid var(--line); background:#0f1219; align-items:flex-end; }
+  .inrow textarea { flex:1; resize:none; border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:20px; padding:11px 14px; font-size:16px; font-family:inherit; max-height:120px; line-height:1.35; }
+  .inrow button { flex:none; width:44px; height:44px; border-radius:50%; border:0; background:var(--card); color:var(--text); font-size:19px; cursor:pointer; }
+  .inrow button.send { background:var(--accent); color:#fff; }
+  .dots::after { content:"…"; animation:blink 1s infinite; } @keyframes blink { 50% { opacity:.2; } }
+  /* настройки ИИ */
+  .modal { position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.6); display:none; align-items:flex-end; justify-content:center; }
+  .modal.open { display:flex; }
+  .modal .box { background:#151922; width:100%; max-width:560px; border-radius:22px 22px 0 0; padding:18px 18px calc(var(--sb) + 18px); max-height:92%; overflow:auto; }
+  .modal h2 { margin:0 0 12px; font-size:19px; display:flex; justify-content:space-between; align-items:center; }
+  .modal label { display:block; font-size:13px; color:var(--muted); margin:12px 0 5px; }
+  .modal input, .modal select { width:100%; border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:12px; padding:12px; font-size:16px; }
+  .modal .note { font-size:13px; color:#c7cdd8; line-height:1.5; background:rgba(255,255,255,.04); border-radius:12px; padding:10px 12px; margin-top:12px; }
+  .modal .row { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
+  .modal a { color:var(--accent); }
 </style>
 </head>
 <body>
-<div id="app">
+
+<!-- ================= ТРЕНИРОВКА ================= -->
+<section class="screen active" id="tab-train">
   <video id="video" playsinline muted autoplay></video>
   <canvas id="cv"></canvas>
-
   <div class="top">
     <div class="chip">
       <div class="mode" id="modeLbl">🤖 Авто</div>
@@ -92,9 +153,8 @@
     <button class="ibtn" id="btnFlip" aria-label="Сменить камеру">🔄</button>
     <button class="ibtn" id="btnStats" aria-label="Итоги">📊</button>
   </div>
-
   <button class="nope" id="btnNo" aria-label="Не то упражнение">✖ Не то</button>
-  <div class="hud" id="hud">
+  <div class="hud">
     <div class="card"><div class="count" id="count">0</div><div class="lbl" id="countLbl">повторов</div></div>
     <div class="card">
       <div class="ring">
@@ -104,42 +164,142 @@
       </div>
       <div class="avg" id="avg">среднее —</div>
     </div>
+    <div class="card fam" id="fam"></div>
   </div>
-
-  <div class="hintline" id="viewHint"></div>
-  <div class="paused" id="paused">⏸ Пауза<small>Скажи «продолжить» или коснись экрана</small></div>
+  <div class="hintline" id="viewHint" style="display:none"></div>
   <div class="cue" id="cue"></div>
-
+  <div class="paused" id="paused">⏸ Пауза<small>Скажи «продолжить» или коснись экрана</small></div>
   <div class="sheet" id="sheet">
     <h2>Итоги тренировки <button class="sbtn" id="btnClose">Закрыть</button></h2>
     <div id="statsBody"></div>
-    <div style="margin-top:14px; display:flex; gap:8px;"><button class="sbtn" id="btnReset">Начать заново</button></div>
+    <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="sbtn primary" id="btnReview">💬 Разобрать с тренером</button>
+      <button class="sbtn" id="btnReset">Начать заново</button>
+    </div>
   </div>
-
   <div class="start" id="start">
-    <div style="font-size:54px">🤸</div>
+    <div style="font-size:50px">🤸</div>
     <h1>AI-тренер по калистенике</h1>
-    <p>Видит твою технику через камеру, сам узнаёт упражнение, считает повторы и время, оценивает качество в процентах и подсказывает голосом.</p>
+    <p>Сам узнаёт упражнение, считает повторы и время, оценивает технику в процентах и подсказывает голосом.</p>
     <div class="steps">
       1. Поставь телефон на пол или опору в 2–3 м от себя.<br>
       2. Встань <b>боком</b> к камере, чтобы ты был виден целиком.<br>
       3. Начинай упражнение — тренер сам поймёт, что ты делаешь.<br>
-      🎙 Если он ошибся — скажи <b>«нет»</b> или назови упражнение: <b>«отжимания»</b>, <b>«планка»</b>… Ещё можно: <b>«пауза»</b>, <b>«продолжить»</b>, <b>«авто»</b>.
+      🎙 Ошибся? Скажи <b>«нет»</b> или назови упражнение. Ещё: <b>«пауза»</b>, <b>«продолжить»</b>, <b>«авто»</b>.
     </div>
     <button class="go" id="btnGo">Начать</button>
     <div class="err" id="err"></div>
     <p style="font-size:12px">Видео обрабатывается прямо на устройстве и никуда не отправляется.</p>
   </div>
+</section>
+
+<!-- ================= УПРАЖНЕНИЯ ================= -->
+<section class="screen page" id="tab-lib">
+  <h1>Упражнения</h1>
+  <div class="pills" id="groupPills"></div>
+  <div id="exList"></div>
+</section>
+
+<!-- ================= ИИ-ТРЕНЕР ================= -->
+<section class="screen" id="tab-ai">
+  <div class="ai-head">
+    <h1>ИИ-тренер<small id="aiStatus">не подключён</small></h1>
+    <div style="display:flex; gap:8px">
+      <button class="ibtn" id="btnClear" aria-label="Очистить чат" style="background:var(--card)">🗑</button>
+      <button class="ibtn" id="btnAiSet" aria-label="Настройки ИИ" style="background:var(--card)">⚙️</button>
+    </div>
+  </div>
+  <div class="msgs" id="msgs"></div>
+  <div class="quick" id="quick"></div>
+  <div class="inrow">
+    <button id="btnDictate" aria-label="Надиктовать">🎙</button>
+    <textarea id="aiInput" rows="1" placeholder="Спроси про технику, ошибки, программу…"></textarea>
+    <button class="send" id="btnSend" aria-label="Отправить">➤</button>
+  </div>
+</section>
+
+<div class="modal" id="aiModal">
+  <div class="box">
+    <h2>Подключение ИИ <button class="sbtn" id="btnAiClose">Закрыть</button></h2>
+    <label for="aiProv">Сервис</label>
+    <select id="aiProv"></select>
+    <div class="note" id="aiNote"></div>
+    <label for="aiKey">Ключ API</label>
+    <input id="aiKey" type="password" autocomplete="off" placeholder="Вставь ключ сюда">
+    <div id="aiAdv">
+      <label for="aiBase">Адрес API</label>
+      <input id="aiBase" placeholder="https://…/v1" autocomplete="off">
+      <label for="aiModel">Модель</label>
+      <input id="aiModel" autocomplete="off">
+    </div>
+    <div class="row">
+      <button class="sbtn primary" id="btnAiSave">Сохранить и проверить</button>
+      <a class="sbtn" id="aiKeyLink" href="#" target="_blank" rel="noopener" style="text-decoration:none">Получить ключ ↗</a>
+    </div>
+    <div class="note" id="aiTest" style="display:none"></div>
+    <div class="note">🔒 Ключ хранится только на этом устройстве и отправляется только выбранному сервису. Данные о тренировке уходят в ИИ, только когда ты задаёшь вопрос.</div>
+  </div>
 </div>
+
+<nav class="tabs">
+  <button class="on" data-tab="train"><b>🏋️</b>Тренировка</button>
+  <button data-tab="lib"><b>📚</b>Упражнения</button>
+  <button data-tab="ai"><b>💬</b>ИИ-тренер</button>
+</nav>
 
 <script type="module">
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
-import { EXERCISES, features, classify, Recognizer, makeEngine, frameProblem, PROBLEM_TEXT, parseCommand } from "./logic.js";
+import { EXERCISES, features, frameProblem, PROBLEM_TEXT, parseCommand, Session, familyOf } from "./logic.js";
+import { GROUPS, LIB, LEVELS } from "./library.js";
+import { PROVIDERS, loadSettings, saveSettings, isConfigured, systemPrompt, ask, localReview, localTechnique, md } from "./coach-ai.js";
 
 const $ = id => document.getElementById(id);
 const video = $("video"), cv = $("cv"), ctx = cv.getContext("2d");
+const ses = new Session();
 
-// ---------- Меню элементов ----------
+// ================= Вкладки =================
+let tab = "train";
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  if (t === tab) return;
+  if (tab === "train") suspendTraining();
+  tab = t;
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === "tab-" + t));
+  if (t === "train") resumeTraining();
+  if (t === "lib") renderLib();
+  if (t === "ai") { renderAiStatus(); renderQuick(); scrollMsgs(); }
+}
+
+// ================= Голос (озвучка) =================
+let muted = false, ruVoice = null, ttsEndT = 0;
+const hasTTS = "speechSynthesis" in window;
+function pickVoice() { const v = speechSynthesis.getVoices(); ruVoice = v.find(x => /^ru/i.test(x.lang)) || null; }
+if (hasTTS) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+const lastSaid = {}; let lastAny = 0;
+function say(text, rate = 1.1) {
+  if (muted || !hasTTS) return;
+  const u = new SpeechSynthesisUtterance(text); u.lang = "ru-RU"; if (ruVoice) u.voice = ruVoice; u.rate = rate;
+  u.onend = u.onerror = () => { ttsEndT = performance.now(); }; ttsEndT = Infinity;
+  speechSynthesis.speak(u);
+}
+function speak(text, { key = text, cooldown = 6000, priority = false, color } = {}) {
+  const now = performance.now();
+  if (!priority && (now - (lastSaid[key] ?? -1e9) < cooldown || now - lastAny < 2000)) return;
+  lastSaid[key] = now; lastAny = now;
+  showCue(text, color || (priority ? "var(--good)" : "var(--bad)"));
+  if (tab !== "train") return;
+  if (priority && hasTTS) speechSynthesis.cancel();
+  say(text);
+}
+let cueT;
+function showCue(text, color) {
+  const c = $("cue"); c.textContent = text; c.style.borderLeftColor = color; c.classList.add("show"); $("viewHint").classList.add("hide");
+  clearTimeout(cueT); cueT = setTimeout(() => { c.classList.remove("show"); $("viewHint").classList.remove("hide"); }, 2500);
+}
+$("btnSound").onclick = () => { muted = !muted; $("btnSound").textContent = muted ? "🔇" : "🔊"; if (muted && hasTTS) speechSynthesis.cancel(); };
+
+// ================= Выбор элемента =================
 const sel = $("exSel");
 sel.add(new Option("🤖 Автораспознавание", "auto"));
 for (const [label, type] of [["Динамика — повторы", "reps"], ["Статика — удержание", "hold"]]) {
@@ -147,85 +307,97 @@ for (const [label, type] of [["Динамика — повторы", "reps"], ["
   for (const [k, d] of Object.entries(EXERCISES)) if (d.type === type) g.appendChild(new Option(d.name, k));
   sel.appendChild(g);
 }
-
-// ---------- Состояние ----------
-let mode = "auto", curKey = null, engine = null;
-const engines = {};                 // по одному счётчику на каждый элемент за тренировку
-const rec = new Recognizer();
-const hist = [];                    // последние 1.5 с признаков
-const getEngine = k => engines[k] ||= makeEngine(k);
-
-const blocked = new Map();          // элементы, которые пользователь отверг: key → до какого времени
-let countAtDetect = 0, noiseT = [], paused = false;
-
-function setExercise(k, announce) {
-  curKey = k; engine = k ? getEngine(k) : null;
-  countAtDetect = engine ? engine.count : 0;
-  $("btnNo").style.display = k ? "flex" : "none";
+let shownKey = undefined, paused = false;
+function syncExercise(announce) {
+  const k = ses.cur;
+  if (k === shownKey) return;
+  const prevFam = familyOf(shownKey);
+  shownKey = k;
   const d = k ? EXERCISES[k] : null;
+  $("btnNo").style.display = k ? "flex" : "none";
   $("exName").textContent = d ? d.name : "Встань в кадр";
-  $("countLbl").textContent = d?.type === "hold" ? "секунд" : "повторов";
   $("viewHint").textContent = d ? "📷 " + d.view : "";
   $("viewHint").style.display = d ? "" : "none";
-  if (announce && d) speak(d.name, { priority: true });
+  $("modeLbl").textContent = ses.mode === "auto" ? "🤖 Авто" : "✋ Вручную · нажми, чтобы сменить";
+  sel.value = ses.mode === "auto" ? "auto" : k;
+  // внутри связки (планка ↔ отжимания) не объявляем смену — просто переключаем показатели
+  if (announce && d && !prevFam.includes(k)) speak(d.name, { priority: true });
   renderHud();
 }
-function setMode(m) {
-  mode = m; sel.value = m === "auto" ? "auto" : curKey;
-  $("modeLbl").textContent = mode === "auto" ? "🤖 Авто" : "✋ Вручную · нажми, чтобы сменить";
-}
-// «Нет»: отменить неверно распознанный элемент и всё, что было насчитано с момента распознавания
+function chooseManual(k) { ses.setManual(k); shownKey = undefined; syncExercise(true); }
+function goAuto(announce) { ses.setAuto(); shownKey = undefined; syncExercise(); if (announce) speak("Автораспознавание", { priority: true, color: "var(--accent)" }); }
+sel.onchange = () => sel.value === "auto" ? goAuto(false) : chooseManual(sel.value);
 function reject() {
-  if (!curKey) { speak("Скажи название упражнения", { priority: true, color: "var(--accent)" }); return; }
-  const name = EXERCISES[curKey].name;
-  engine.undoTo(countAtDetect);
-  blocked.set(curKey, performance.now() + 20000);
-  rec.clear(); hist.length = 0;
-  setExercise(null); setMode("auto");
-  speak(`Понял, это не ${name.toLowerCase()}. Продолжай или назови упражнение`, { priority: true, color: "var(--accent)" });
-}
-function chooseManual(k) {
-  setExercise(k, true); setMode("manual"); rec.clear();
-}
-function setPaused(p) {
-  paused = p; $("paused").style.display = p ? "flex" : "none";
-  if (p) { engine?.interrupt(); speak("Пауза", { priority: true, color: "var(--accent)" }); }
-  else { hist.length = 0; rec.clear(); speak("Продолжаем", { priority: true }); }
+  const k = ses.reject(performance.now());
+  if (!k) { speak("Скажи название упражнения", { priority: true, color: "var(--accent)" }); return; }
+  syncExercise();
+  speak(`Понял, это не ${EXERCISES[k].name.toLowerCase()}. Продолжай или назови упражнение`, { priority: true, color: "var(--accent)" });
 }
 $("btnNo").onclick = reject;
+function setPaused(p) {
+  paused = p; $("paused").style.display = p ? "flex" : "none";
+  if (p) { ses.bad(performance.now()); speak("Пауза", { priority: true, color: "var(--accent)" }); }
+  else { ses.hist = []; ses.rec.clear(); speak("Продолжаем", { priority: true }); }
+}
 $("paused").onclick = () => setPaused(false);
 
-sel.onchange = () => {
-  if (sel.value === "auto") { setExercise(null); setMode("auto"); } else chooseManual(sel.value);
-};
-
-// ---------- Голос ----------
-let muted = false, ruVoice = null;
-const hasTTS = "speechSynthesis" in window;
-function pickVoice() { const v = speechSynthesis.getVoices(); ruVoice = v.find(x => /^ru/i.test(x.lang)) || null; }
-if (hasTTS) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-const lastSaid = {}; let lastAny = 0;
-function speak(text, { key = text, cooldown = 6000, priority = false, color } = {}) {
-  const now = performance.now();
-  if (!priority && (now - (lastSaid[key] ?? -1e9) < cooldown || now - lastAny < 2000)) return;
-  lastSaid[key] = now; lastAny = now;
-  showCue(text, color || (priority ? "var(--good)" : "var(--bad)"));
-  if (muted || !hasTTS) return;
-  if (priority) speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "ru-RU"; if (ruVoice) u.voice = ruVoice; u.rate = 1.1;
-  u.onend = u.onerror = () => { ttsEndT = performance.now(); };
-  ttsEndT = Infinity;
-  speechSynthesis.speak(u);
+// ================= Показатели =================
+const qClass = q => q >= 80 ? "good" : q >= 60 ? "mid" : "bad";
+const qColor = q => `var(--${qClass(q)})`;
+const fmtSec = s => { s = Math.floor(s); return s < 60 ? String(s) : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+function renderHud() {
+  const k = ses.cur, e = k ? ses.engine(k) : null;
+  let count = "0", q = null, avg = null, qLbl = "качество", unit = "повторов";
+  if (e) {
+    if (e.def.type === "reps") { count = String(e.reps); q = e.lastScore; avg = e.avg; qLbl = "последний"; }
+    else { count = fmtSec(e.cur); q = e.lastScore; avg = e.avg; qLbl = "сейчас"; unit = e.cur >= 60 ? "мин:сек" : "секунд"; }
+  }
+  $("count").textContent = count; $("countLbl").textContent = unit;
+  $("pct").textContent = q == null ? "—" : q + "%"; $("pctLbl").textContent = qLbl;
+  $("avg").textContent = "среднее " + (avg == null ? "—" : avg + "%");
+  const arc = $("ringArc"); arc.style.strokeDashoffset = 264 * (1 - (q ?? 0) / 100); arc.style.stroke = q == null ? "transparent" : qColor(q);
+  // связка: второй счётчик (например, время планки, пока отжимаешься)
+  const others = ses.family.filter(m => m !== k).map(m => ses.engine(m)).filter(o => o.def.type === "reps" ? o.reps > 0 : o.cur >= 1);
+  const fam = $("fam");
+  fam.style.display = others.length ? "block" : "none";
+  fam.innerHTML = others.map(o => `${o.def.name}: <b>${o.def.type === "reps" ? o.reps + " повт." : fmtSec(o.cur) + " с"}</b>`).join("<br>");
 }
-let ttsEndT = 0;
+function renderStats() {
+  const rows = ses.summary();
+  if (!rows.length) { $("statsBody").innerHTML = '<div class="empty">Пока ничего не выполнено.</div>'; return; }
+  $("statsBody").innerHTML = "<table>" + rows.map(s => {
+    const res = s.type === "reps" ? `${s.reps} повт.` : `${Math.round(s.total)} с · рекорд ${Math.round(s.best)} с`;
+    return `<tr><td>${s.name}</td><td>${res}</td><td class="q-${qClass(s.avg ?? 0)}">${s.avg ?? "—"}%</td></tr>`;
+  }).join("") + "</table>";
+}
+$("btnStats").onclick = () => { renderStats(); $("sheet").classList.add("open"); };
+$("btnClose").onclick = () => $("sheet").classList.remove("open");
+$("btnReset").onclick = () => { ses.reset(); shownKey = undefined; syncExercise(); renderStats(); };
+$("btnReview").onclick = () => { $("sheet").classList.remove("open"); showTab("ai"); sendMessage("Разбери мою тренировку: что получилось и что исправить?"); };
 
-// ---------- Голосовые команды (микрофон) ----------
+// ================= События тренировки =================
+function handle(ev) {
+  for (const e of ev) {
+    if (e.type === "rep") {
+      speak(String(e.n), { priority: true, color: qColor(e.score) });
+      if (e.tip) setTimeout(() => speak(e.tip, { key: "tip" + e.tip, cooldown: 8000 }), 700);
+    } else if (e.type === "partial") speak("Неполная амплитуда. " + e.text, { key: "partial", cooldown: 5000 });
+    else if (e.type === "cue") speak(e.text, { key: e.key });
+    else if (e.type === "time") {
+      // если в этот момент идут отжимания в связке — не перебиваем счёт
+      const repBusy = ses.family.some(m => m !== e.ex && ses.engine(m).busy);
+      speak(fmtSec(e.sec) + " секунд", repBusy ? { key: "time" + e.sec, cooldown: 0, color: "var(--accent)" } : { priority: true, color: "var(--accent)" });
+    }
+    else if (e.type === "holdEnd") speak(`Удержание ${Math.round(e.sec)} секунд`, { key: "holdEnd", cooldown: 3000, color: "var(--accent)" });
+  }
+}
+
+// ================= Голосовые команды =================
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recog = null, micOn = !!SR;
-if (!SR) $("btnMic").style.display = "none";
+let recog = null, micOn = !!SR, dictating = false;
+if (!SR) { $("btnMic").style.display = "none"; $("btnDictate").style.display = "none"; }
 function startMic() {
-  if (!SR || !micOn || recog) return;
+  if (!SR || !micOn || recog || dictating || tab !== "train" || !running) return;
   try {
     recog = new SR(); recog.lang = "ru-RU"; recog.continuous = true; recog.interimResults = false; recog.maxAlternatives = 3;
     recog.onresult = e => {
@@ -239,11 +411,11 @@ function startMic() {
       }
     };
     recog.onerror = e => { if (e.error === "not-allowed" || e.error === "service-not-allowed") { micOn = false; updateMicBtn(); } };
-    recog.onend = () => { recog = null; if (running && micOn) setTimeout(startMic, 300); }; // браузер периодически сам выключает — перезапускаем
+    recog.onend = () => { recog = null; if (running && micOn && tab === "train") setTimeout(startMic, 300); };
     recog.start();
   } catch { recog = null; }
 }
-function stopMic() { try { recog?.abort(); } catch {} recog = null; }
+function stopMic() { const r = recog; recog = null; try { r?.abort(); } catch {} }
 function updateMicBtn() { $("btnMic").classList.toggle("off", !micOn); }
 $("btnMic").onclick = () => {
   micOn = !micOn; updateMicBtn();
@@ -252,68 +424,14 @@ $("btnMic").onclick = () => {
 function runCommand(c, heard) {
   showCue("🎙 «" + heard + "»", "var(--accent)");
   if (c.cmd === "no") reject();
-  else if (c.cmd === "set") {
-    if (c.rejected && curKey && curKey !== c.key) { engine.undoTo(countAtDetect); blocked.set(curKey, performance.now() + 20000); }
-    chooseManual(c.key);
-  }
-  else if (c.cmd === "auto") { setExercise(null); setMode("auto"); rec.clear(); speak("Автораспознавание", { priority: true, color: "var(--accent)" }); }
+  else if (c.cmd === "set") { if (c.rejected && ses.cur && ses.cur !== c.key) ses.reject(performance.now()); chooseManual(c.key); }
+  else if (c.cmd === "auto") goAuto(true);
   else if (c.cmd === "pause" && !paused) setPaused(true);
   else if (c.cmd === "resume" && paused) setPaused(false);
 }
-let cueT;
-function showCue(text, color) { const c = $("cue"); c.textContent = text; c.style.borderLeftColor = color; c.classList.add("show"); $("viewHint").classList.add("hide"); clearTimeout(cueT); cueT = setTimeout(() => { c.classList.remove("show"); $("viewHint").classList.remove("hide"); }, 2500); }
-$("btnSound").onclick = () => { muted = !muted; $("btnSound").textContent = muted ? "🔇" : "🔊"; if (muted && hasTTS) speechSynthesis.cancel(); };
 
-// ---------- Показатели ----------
-const qClass = q => q >= 80 ? "good" : q >= 60 ? "mid" : "bad";
-const qColor = q => `var(--${qClass(q)})`;
-function renderHud() {
-  const e = engine;
-  let count = 0, q = null, avg = null, qLbl = "качество";
-  if (e) {
-    if (e.def.type === "reps") { count = e.reps; q = e.lastScore; avg = e.avg; qLbl = "последний"; }
-    else { count = Math.floor(e.cur); q = e.lastScore; avg = e.avg; qLbl = "сейчас"; }
-  }
-  $("count").textContent = count;
-  $("pct").textContent = q == null ? "—" : q + "%";
-  $("pctLbl").textContent = qLbl;
-  $("avg").textContent = "среднее " + (avg == null ? "—" : avg + "%");
-  const arc = $("ringArc");
-  arc.style.strokeDashoffset = 264 * (1 - (q ?? 0) / 100);
-  arc.style.stroke = q == null ? "transparent" : qColor(q);
-}
-function renderStats() {
-  const rows = Object.values(engines).filter(e => e.def.type === "reps" ? e.reps > 0 : e.total >= 1);
-  if (!rows.length) { $("statsBody").innerHTML = '<div class="empty">Пока ничего не выполнено.</div>'; return; }
-  $("statsBody").innerHTML = "<table>" + rows.map(e => {
-    const res = e.def.type === "reps" ? `${e.reps} повт.` : `${Math.round(e.total)} с · рекорд ${Math.round(e.best)} с`;
-    const a = e.avg; return `<tr><td>${e.def.name}</td><td>${res}</td><td class="q-${qClass(a ?? 0)}">${a ?? "—"}%</td></tr>`;
-  }).join("") + "</table>";
-}
-$("btnStats").onclick = () => { renderStats(); $("sheet").classList.add("open"); };
-$("btnClose").onclick = () => $("sheet").classList.remove("open");
-$("btnReset").onclick = () => { for (const k in engines) delete engines[k]; setExercise(mode === "auto" ? null : curKey); renderStats(); };
-
-// ---------- События тренировки ----------
-function handle(ev) {
-  for (const e of ev) {
-    if (e.type === "rep") {
-      speak(String(e.n), { priority: true, color: qColor(e.score) });
-      if (e.tip) setTimeout(() => speak(e.tip, { key: "tip" + e.tip, cooldown: 8000 }), 700);
-    } else if (e.type === "partial") speak("Неполная амплитуда. " + e.text, { key: "partial", cooldown: 5000 });
-    else if (e.type === "cue") speak(e.text, { key: e.key });
-    else if (e.type === "time") speak(e.sec + " секунд", { priority: true, color: "var(--accent)" });
-    else if (e.type === "noise") {
-      rec.clear(); const now = performance.now(); noiseT = noiseT.filter(x => now - x < 3000); noiseT.push(now);
-      // много помех сразу после распознавания — скорее всего, распознал зря
-      if (mode === "auto" && noiseT.length >= 3 && engine && engine.count === countAtDetect) { setExercise(null); noiseT = []; }
-    }
-    else if (e.type === "holdEnd") speak(`Удержание ${Math.round(e.sec)} секунд`, { key: "holdEnd", cooldown: 3000, color: "var(--accent)" });
-  }
-}
-
-// ---------- Камера, модель, экран ----------
-let landmarker = null, stream = null, facing = "user", running = false, lastVT = -1, noPoseT = 0, wakeLock = null;
+// ================= Камера и модель =================
+let landmarker = null, stream = null, facing = "user", running = false, started = false, lastVT = -1, noPoseT = 0, wakeLock = null;
 async function loadModel() {
   const fs = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
   const opts = delegate => ({ baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task", delegate },
@@ -330,27 +448,39 @@ async function startCamera() {
 async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && running) keepAwake(); });
 
-$("btnGo").onclick = async () => {
+async function startTraining() {
   const b = $("btnGo"); b.disabled = true; $("err").textContent = "";
-  if (hasTTS) { const u = new SpeechSynthesisUtterance(""); speechSynthesis.speak(u); } // разблокировка голоса (iOS)
+  if (hasTTS) speechSynthesis.speak(new SpeechSynthesisUtterance("")); // разблокировка голоса (iOS)
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("Браузер не даёт доступ к камере. Открой ссылку в Safari или Chrome (адрес должен начинаться с https://).");
     b.textContent = "Включаю камеру…"; await startCamera();
     b.textContent = "Загружаю модель…"; if (!landmarker) landmarker = await loadModel();
-    $("start").style.display = "none"; running = true; keepAwake();
+    $("start").style.display = "none"; running = true; started = true; keepAwake();
     speak("Поехали! Начинай упражнение", { priority: true });
     startMic(); updateMicBtn();
     requestAnimationFrame(loop);
   } catch (e) {
-    const msg = e?.name === "NotAllowedError" ? "Нет доступа к камере. Разреши его в настройках браузера и нажми ещё раз." : (e?.message || String(e));
-    $("err").textContent = msg; b.textContent = "Попробовать снова"; b.disabled = false;
+    $("err").textContent = e?.name === "NotAllowedError" ? "Нет доступа к камере. Разреши его в настройках браузера и нажми ещё раз." : (e?.message || String(e));
+    b.textContent = "Попробовать снова"; b.disabled = false;
   }
-};
+}
+$("btnGo").onclick = startTraining;
 $("btnFlip").onclick = async () => { facing = facing === "user" ? "environment" : "user"; if (running) try { await startCamera(); } catch {} };
+// уходим с вкладки — камеру и микрофон выключаем, возвращаемся — включаем
+function suspendTraining() {
+  if (!running) return;
+  running = false; stopMic(); ses.bad(performance.now());
+  stream?.getTracks().forEach(t => t.stop()); stream = null;
+  try { wakeLock?.release(); } catch {}
+}
+async function resumeTraining() {
+  if (!started || running) return;
+  try { await startCamera(); running = true; keepAwake(); startMic(); requestAnimationFrame(loop); } catch {}
+}
 
-// ---------- Главный цикл ----------
+// ================= Главный цикл =================
 const BODY = PoseLandmarker.POSE_CONNECTIONS.filter(c => c.start >= 11 && c.end >= 11);
-let du = null, hudT = 0, prevF = null, badT = 0, lastGood = null;
+let du = null, hudT = 0, prevF = null, badT = 0;
 function loop() {
   if (!running) return;
   requestAnimationFrame(loop);
@@ -364,7 +494,7 @@ function loop() {
   const lm = res.landmarks?.[0];
   if (!lm) {
     noPoseT ||= t;
-    if (t - noPoseT > 3000) speak("Не вижу тебя, встань в кадр целиком", { key: "nopose", cooldown: 10000 });
+    if (t - noPoseT > 3000 && !paused) speak("Не вижу тебя, встань в кадр целиком", { key: "nopose", cooldown: 10000 });
     return;
   }
   noPoseT = 0;
@@ -372,39 +502,165 @@ function loop() {
   const f = features(lm, W, H);
   const problem = frameProblem(f, prevF); prevF = f;
   if (problem) {
-    // ненадёжный кадр: ничего не считаем, начатый повтор сбрасываем
     badT ||= t;
-    if (engine) { if (engine.def.type === "hold" && lastGood) handle(engine.update(lastGood, t, false)); else engine.interrupt(); }
-    hist.length = 0; rec.clear();
+    handle(ses.bad(t));
     if (t - badT > 2000 && PROBLEM_TEXT[problem]) speak(PROBLEM_TEXT[problem], { key: "problem", cooldown: 10000, color: "var(--muted)" });
     du.drawConnectors(lm, BODY, { color: "rgba(160,160,160,.6)", lineWidth: Math.max(2, W / 300) });
     return;
   }
-  if (t - badT < 400) return; // после помех ждём, пока картинка устоится
-  badT = 0; lastGood = f;
-  hist.push({ t, f }); while (t - hist[0].t > 1500) hist.shift();
+  if (badT && t - badT < 400) return; // после помех ждём, пока картинка устоится
+  badT = 0;
+  const out = ses.frame(f, t);
+  syncExercise(true);
+  handle(out.ev);
 
-  if (mode === "auto") {
-    const rg = k => { let a = Infinity, b = -Infinity; for (const h of hist) { a = Math.min(a, h.f[k]); b = Math.max(b, h.f[k]); } return b - a; };
-    let cand = classify(f, { elbow: rg("elbow"), knee: rg("knee"), hip: rg("hip") });
-    if (cand && blocked.get(cand) > t) cand = null;
-    const det = rec.push(cand, t);
-    if (det && det !== curKey && !(engine && engine.busy)) {
-      setExercise(det, true);
-      for (const h of hist.slice(0, -1)) engine.update(h.f, h.t, true); // не теряем начало первого повтора
-    }
-    if (engine) handle(engine.update(f, t, engine.def.type === "hold" ? cand === curKey || cand === null && engine.cur > 0 : true));
-  } else if (engine) handle(engine.update(f, t, true));
-
-  if (f.conf < 0.5) speak("Встань так, чтобы тело было видно целиком", { key: "vis", cooldown: 10000 });
-
-  // скелет: цвет = текущая техника
-  const live = engine ? engine.liveScore : 1;
+  const e = ses.cur ? ses.engine(ses.cur) : null;
+  const live = e ? e.liveScore : 1;
   const col = live >= 0.8 ? "#3ddc84" : live >= 0.6 ? "#ffc94d" : "#ff5c5c";
   du.drawConnectors(lm, BODY, { color: col, lineWidth: Math.max(3, W / 200) });
   du.drawLandmarks(lm.slice(11), { color: "#fff", fillColor: col, radius: Math.max(3, W / 260), lineWidth: 1 });
   if (t - hudT > 150) { hudT = t; renderHud(); }
 }
+
+// ================= Библиотека упражнений =================
+let group = "all";
+function renderLib() {
+  $("groupPills").innerHTML = [`<button class="pill ${group === "all" ? "on" : ""}" data-g="all">Все</button>`]
+    .concat(GROUPS.map(g => `<button class="pill ${group === g.id ? "on" : ""}" data-g="${g.id}">${g.icon} ${g.name}</button>`)).join("");
+  $("groupPills").querySelectorAll(".pill").forEach(b => b.onclick = () => { group = b.dataset.g; renderLib(); });
+  const keys = group === "all" ? Object.keys(LIB).sort((a, b) => LIB[a].level - LIB[b].level) : GROUPS.find(g => g.id === group).keys;
+  const sum = Object.fromEntries(ses.summary().map(s => [s.key, s]));
+  $("exList").innerHTML = keys.map(k => {
+    const l = LIB[k], d = EXERCISES[k], s = sum[k];
+    const stat = s ? `<div class="stat">Сегодня: ${s.type === "reps" ? s.reps + " повт." : Math.round(s.total) + " с"} · качество <span class="q-${qClass(s.avg ?? 0)}">${s.avg ?? "—"}%</span></div>` : "";
+    return `<details class="ex"><summary><div class="t"><b>${d.name}</b><span>${l.muscles}</span>${stat}</div><span class="badge lv${l.level}">${LEVELS[l.level]}</span></summary>
+      <div class="body">
+        <div><b>Рекомендация:</b> ${l.dose} · ${d.type === "reps" ? "считаются повторы" : "считается время"} · 📷 ${d.view.toLowerCase()}</div>
+        <h4>Техника</h4><ol>${l.how.map(x => `<li>${x}</li>`).join("")}</ol>
+        <h4>Частые ошибки</h4><ul>${l.mistakes.map(x => `<li>${x}</li>`).join("")}</ul>
+        <h4>Прогрессия</h4><div>⬇️ Проще: ${l.easier}</div><div>⬆️ Сложнее: ${l.harder}</div>
+        <div class="acts"><button class="sbtn primary" data-start="${k}">▶ Начать с камерой</button><button class="sbtn" data-ask="${k}">💬 Спросить тренера</button></div>
+      </div></details>`;
+  }).join("");
+  $("exList").querySelectorAll("[data-start]").forEach(b => b.onclick = async () => {
+    chooseManual(b.dataset.start); showTab("train");
+    if (!started) await startTraining();
+  });
+  $("exList").querySelectorAll("[data-ask]").forEach(b => b.onclick = () => {
+    const k = b.dataset.ask; showTab("ai"); sendMessage(`Расскажи про технику: ${EXERCISES[k].name}. Как сделать правильно и как прогрессировать?`, k);
+  });
+}
+
+// ================= ИИ-тренер =================
+let ai = loadSettings(), chat = [], busy = false, abortCtl = null;
+try { chat = JSON.parse(localStorage.getItem("coach-chat") || "[]"); } catch {}
+const saveChat = () => { try { localStorage.setItem("coach-chat", JSON.stringify(chat.slice(-40))); } catch {} };
+function renderAiStatus() {
+  const p = PROVIDERS[ai.provider];
+  $("aiStatus").textContent = isConfigured(ai) ? "подключён · " + (p?.name.split(" — ")[0] || "свой сервис") : "без ИИ: разбор тренировки и справка по технике";
+}
+function scrollMsgs() { const m = $("msgs"); m.scrollTop = m.scrollHeight; }
+function bubble(role, html, opts = {}) {
+  const d = document.createElement("div"); d.className = "msg " + (role === "user" ? "me" : "bot") + (opts.err ? " err" : "");
+  d.innerHTML = html; $("msgs").appendChild(d); scrollMsgs(); return d;
+}
+function addTools(d, text) {
+  const t = document.createElement("div"); t.className = "tools";
+  t.innerHTML = `<button>🔊 Прочитать</button><button>📋 Копировать</button>`;
+  const [bRead, bCopy] = t.querySelectorAll("button");
+  bRead.onclick = () => { if (hasTTS) { speechSynthesis.cancel(); say(text.replace(/[*#•]/g, ""), 1.05); } };
+  bCopy.onclick = async () => { try { await navigator.clipboard.writeText(text); bCopy.textContent = "✓ Скопировано"; } catch {} };
+  d.appendChild(t);
+}
+function renderChat() {
+  $("msgs").innerHTML = "";
+  if (!isConfigured(ai)) {
+    const s = document.createElement("div"); s.className = "setup";
+    s.innerHTML = `<b>Подключи ИИ, чтобы обсуждать что угодно</b><br>Уже сейчас без подключения работают разбор тренировки и справка по технике любого упражнения. Для свободного разговора нужен бесплатный ключ — это займёт пару минут.<div style="margin-top:10px"><button class="sbtn primary" id="btnSetup">Подключить ИИ</button></div>`;
+    $("msgs").appendChild(s); s.querySelector("#btnSetup").onclick = openAiSettings;
+  }
+  if (!chat.length) bubble("bot", md("Привет! Я твой тренер. Спроси про технику любого элемента, попроси разобрать тренировку или составить программу. 💪"));
+  for (const m of chat) { const d = bubble(m.role, m.role === "user" ? md(m.content) : md(m.content)); if (m.role === "assistant") addTools(d, m.content); }
+}
+function renderQuick() {
+  const items = ["Разбери мою тренировку", "Как научиться подтягиваться с нуля?", "Составь программу на неделю", "Как исправить провис в планке?", "Как делать стойку на руках?", "Болят запястья в отжиманиях"];
+  $("quick").innerHTML = items.map(x => `<button class="pill">${x}</button>`).join("");
+  $("quick").querySelectorAll(".pill").forEach(b => b.onclick = () => sendMessage(b.textContent));
+}
+async function sendMessage(text, focusKey) {
+  text = text.trim(); if (!text || busy) return;
+  $("aiInput").value = ""; autoGrow();
+  chat.push({ role: "user", content: text }); bubble("user", md(text));
+  const summary = ses.summary();
+  const wantsReview = /разбер|разбор|мою тренировк|мои ошибк|как я/i.test(text);
+  // без подключения — отвечаем сами
+  if (!isConfigured(ai)) {
+    let ans = wantsReview ? localReview(summary) : localTechnique(text);
+    if (!ans) ans = "Без подключённого ИИ я умею разбирать тренировку и рассказывать технику упражнений — например, спроси «как делать отжимания». Для свободного разговора подключи ИИ: ⚙️ вверху справа.";
+    chat.push({ role: "assistant", content: ans }); const d = bubble("bot", md(ans)); addTools(d, ans); saveChat(); return;
+  }
+  busy = true; $("btnSend").textContent = "■";
+  const d = bubble("bot", '<span class="dots">Думаю</span>'); let acc = "";
+  const history = chat.slice(-12).map(m => ({ role: m.role, content: m.content }));
+  abortCtl = new AbortController();
+  try {
+    await ask(ai, [{ role: "system", content: systemPrompt(summary, focusKey) }, ...history], delta => { acc += delta; d.innerHTML = md(acc); scrollMsgs(); }, abortCtl.signal);
+    if (!acc) acc = "Сервис вернул пустой ответ. Попробуй ещё раз.";
+    d.innerHTML = md(acc); chat.push({ role: "assistant", content: acc }); addTools(d, acc); saveChat();
+  } catch (e) {
+    if (e.name === "AbortError") { if (acc) { chat.push({ role: "assistant", content: acc }); saveChat(); } }
+    else {
+      d.classList.add("err");
+      const fallback = wantsReview ? "\n\nПока вот разбор без ИИ:\n\n" + localReview(summary) : "";
+      d.innerHTML = md("⚠️ " + e.message + fallback);
+      chat.pop(); // не храним вопрос без ответа
+    }
+  } finally { busy = false; abortCtl = null; $("btnSend").textContent = "➤"; scrollMsgs(); }
+}
+$("btnSend").onclick = () => busy ? abortCtl?.abort() : sendMessage($("aiInput").value);
+$("aiInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage($("aiInput").value); } });
+function autoGrow() { const t = $("aiInput"); t.style.height = "auto"; t.style.height = Math.min(120, t.scrollHeight) + "px"; }
+$("aiInput").addEventListener("input", autoGrow);
+$("btnClear").onclick = () => { chat = []; saveChat(); renderChat(); };
+// диктовка вопроса голосом
+$("btnDictate").onclick = () => {
+  if (!SR || dictating) return;
+  const r = new SR(); r.lang = "ru-RU"; r.interimResults = true; dictating = true; $("btnDictate").textContent = "⏺";
+  const base = $("aiInput").value ? $("aiInput").value + " " : "";
+  r.onresult = e => { let s = ""; for (const x of e.results) s += x[0].transcript; $("aiInput").value = base + s; autoGrow(); };
+  r.onend = r.onerror = () => { dictating = false; $("btnDictate").textContent = "🎙"; };
+  try { r.start(); } catch { dictating = false; $("btnDictate").textContent = "🎙"; }
+};
+// настройки подключения
+const prov = $("aiProv");
+for (const [k, p] of Object.entries(PROVIDERS)) prov.add(new Option(p.name, k));
+function fillAiForm() {
+  const p = PROVIDERS[prov.value];
+  $("aiNote").textContent = p.note;
+  $("aiKeyLink").style.display = p.keyUrl ? "" : "none"; $("aiKeyLink").href = p.keyUrl || "#";
+  $("aiBase").placeholder = p.base || "https://…/v1"; $("aiModel").placeholder = p.model || "название модели";
+}
+function openAiSettings() {
+  prov.value = PROVIDERS[ai.provider] ? ai.provider : "openrouter";
+  $("aiKey").value = ai.key; $("aiBase").value = ai.base; $("aiModel").value = ai.model;
+  $("aiTest").style.display = "none"; fillAiForm(); $("aiModal").classList.add("open");
+}
+prov.onchange = () => { $("aiBase").value = ""; $("aiModel").value = ""; fillAiForm(); };
+$("btnAiSet").onclick = openAiSettings;
+$("btnAiClose").onclick = () => $("aiModal").classList.remove("open");
+$("btnAiSave").onclick = async () => {
+  ai = { provider: prov.value, key: $("aiKey").value.trim(), base: $("aiBase").value.trim(), model: $("aiModel").value.trim() };
+  saveSettings(ai); renderAiStatus();
+  const box = $("aiTest"); box.style.display = "block";
+  if (!isConfigured(ai)) { box.textContent = prov.value === "custom" ? "Укажи ключ, адрес API и модель." : "Вставь ключ."; return; }
+  box.textContent = "Проверяю подключение…";
+  try {
+    let got = ""; await ask(ai, [{ role: "user", content: "Ответь одним словом: работает" }], d => got += d);
+    box.innerHTML = "✅ Подключено! Ответ сервиса: «" + (got.trim().slice(0, 60) || "…") + "»";
+    renderChat();
+  } catch (e) { box.textContent = "❌ " + e.message; }
+};
+renderChat(); renderAiStatus();
 
 // офлайн-кэш и установка на главный экран
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});

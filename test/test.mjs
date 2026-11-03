@@ -1,5 +1,5 @@
 // Проверка распознавания и подсчёта на синтетических скелетах (вид сбоку, кадр 1000×1000)
-import { features, classify, Recognizer, makeEngine, frameProblem, parseCommand } from "../logic.js";
+import { features, classify, Recognizer, makeEngine, frameProblem, parseCommand, Session } from "../logic.js";
 
 const W = 1000, H = 1000, rad = d => d * Math.PI / 180;
 function lmFrom(p) { // p: {nose, sh, el, wr, hip, kn, an} — одинаково для L и R (вид сбоку)
@@ -34,7 +34,26 @@ function pull(elbowAng) { // вис/подтягивание, кисти на п
   const hip = { x: 450, y: sh.y + 250 }, kn = { x: 450, y: hip.y + 200 }, an = { x: 450, y: kn.y + 200 };
   return { wr: wrL, wr2: wrR, sh, el, hip, kn, an, nose: { x: 470, y: sh.y - 70 } };
 }
+function elbowPlank(sag = 0) {
+  const el = { x: 300, y: 800 }, wr = { x: 160, y: 805 }, sh = { x: 300, y: 650 }, an = { x: 900, y: 790 };
+  const hip = mid(sh, an, 0.45); hip.y += sag;
+  return { el, wr, sh, an, hip, kn: mid(hip, an), nose: { x: 230, y: 640 } };
+}
+function bridge(lift) { // lift: 0 — таз на полу, 1 — вверху
+  const sh = { x: 250, y: 850 }, an = { x: 750, y: 860 }, kn = { x: 640, y: 660 };
+  const hip = { x: 470, y: 840 - lift * 150 };
+  return { sh, an, kn, hip, el: { x: 330, y: 860 }, wr: { x: 420, y: 862 }, nose: { x: 170, y: 800 } };
+}
+function row(elbowAng) { // тело под перекладиной под углом ~30°, кисти на перекладине
+  const an = { x: 900, y: 900 }, dir = rad(30), L = 650;
+  const sh = { x: an.x - L * Math.cos(dir), y: an.y - L * Math.sin(dir) };
+  const wr = { x: sh.x + 20, y: sh.y - 2 * 150 * Math.sin(rad(elbowAng / 2)) };
+  const el = { x: sh.x + 150 * Math.cos(rad(elbowAng / 2)) + 20, y: (sh.y + wr.y) / 2 };
+  const hip = mid(sh, an, 0.42), kn = mid(sh, an, 0.7);
+  return { an, sh, wr, el, hip, kn, nose: { x: sh.x - 50, y: sh.y - 45 } };
+}
 const poses = {
+  elbowplank: elbowPlank(),
   plank: pushup(300),
   handstand: (() => { const wr = { x: 500, y: 900 }, sh = { x: 500, y: 600 }, hip = { x: 500, y: 350 }, kn = { x: 500, y: 150 }, an = { x: 500, y: 0 };
     return { wr, sh, el: { x: 500, y: 750 }, hip, kn, an: { x: 500, y: 20 }, nose: { x: 520, y: 680 } }; })(),
@@ -56,7 +75,7 @@ let fail = 0;
 const check = (name, ok, extra = "") => { console.log((ok ? "✅" : "❌") + " " + name + (extra ? "  " + extra : "")); if (!ok) fail++; };
 
 // --- статика: распознавание ---
-for (const [k, expect] of [["plank", "plank"], ["handstand", "handstand"], ["lsit", "lsit"], ["frontlever", "frontlever"],
+for (const [k, expect] of [["elbowplank", "elbowplank"], ["plank", "plank"], ["handstand", "handstand"], ["lsit", "lsit"], ["frontlever", "frontlever"],
   ["backlever", "backlever"], ["planche", "planche"], ["pikeTop", "pike"], ["hollow", "hollow"]]) {
   const f = features(lmFrom(poses[k]), W, H);
   const c = classify(f, { elbow: 0, knee: 0, hip: 0 });
@@ -65,23 +84,23 @@ for (const [k, expect] of [["plank", "plank"], ["handstand", "handstand"], ["lsi
 check("стойка — не элемент", classify(features(lmFrom(squat(178, 3)), W, H), { elbow: 0, knee: 0, hip: 0 }) === null);
 check("вис", classify(features(lmFrom(pull(175)), W, H), { elbow: 0, knee: 0, hip: 0 }) === "hang");
 
-// --- динамика: полный конвейер (распознавание + подсчёт) ---
-function run(name, frameFn, nFrames, expectKey, expectReps) {
-  const rec = new Recognizer(); const hist = []; let cur = null, eng = null; const reps = [];
+// --- динамика: полный конвейер (как в приложении: защита + сессия) ---
+function simulate(frameFn, nFrames, ses = new Session(), t0 = 0) {
+  let prev = null; const reps = [];
   for (let i = 0; i < nFrames; i++) {
-    const t = i * 33;
-    const f = features(Array.isArray(frameFn(i)) ? frameFn(i) : lmFrom(frameFn(i)), W, H);
-    const bad = frameProblem(f, hist.at(-1)?.f);
-    if (bad) { if (eng) eng.interrupt(); hist.length = 0; rec.clear(); continue; }
-    hist.push({ t, f }); while (t - hist[0].t > 1500) hist.shift();
-    const rg = k => Math.max(...hist.map(h => h.f[k])) - Math.min(...hist.map(h => h.f[k]));
-    const det = rec.push(classify(f, { elbow: rg("elbow"), knee: rg("knee"), hip: rg("hip") }), t);
-    if (det && det !== cur && !(eng && eng.busy)) { if (process.env.DBG) console.log('  detect', det, 'at frame', i, 'hist', hist.length); cur = det; eng = makeEngine(det); for (const h of hist) eng.update(h.f, h.t); continue; }
-    if (eng) for (const e of eng.update(f, t)) if (e.type === "rep") reps.push(e.score + (e.tip ? ` (${e.tip})` : ""));
+    const t = t0 + i * 33, raw = frameFn(i);
+    const f = features(Array.isArray(raw) ? raw : lmFrom(raw), W, H);
+    const bad = frameProblem(f, prev); prev = f;
+    const out = bad ? { ev: ses.bad(t) } : ses.frame(f, t);
+    for (const e of out.ev) if (e.type === "rep") reps.push({ ex: e.ex, s: e.score + (e.tip ? ` (${e.tip})` : "") });
   }
-  if (expectKey === null) { check(`${name}: ничего не распознано и не посчитано`, reps.length === 0, `→ ${cur}, ${reps.length} повт.`); return; }
-  check(`${name}: распознан ${expectKey}`, cur === expectKey, `→ ${cur}`);
-  check(`${name}: повторов ${expectReps}`, reps.length === expectReps, `→ ${reps.length}: ${reps.join(", ")}`);
+  return { ses, reps };
+}
+function run(name, frameFn, nFrames, expectKey, expectReps) {
+  const { ses, reps } = simulate(frameFn, nFrames);
+  if (expectKey === null) { check(`${name}: ничего не распознано и не посчитано`, reps.length === 0, `→ ${ses.cur}, ${reps.length} повт.`); return; }
+  check(`${name}: распознан ${expectKey}`, ses.cur === expectKey, `→ ${ses.cur}`);
+  check(`${name}: повторов ${expectReps}`, reps.length === expectReps, `→ ${reps.length}: ${reps.map(r => r.s).join(", ")}`);
 }
 const wave = (i, period) => (1 - Math.cos(2 * Math.PI * i / period)) / 2; // 0→1→0
 run("Приседания (хорошие)", i => squat(170 - 85 * wave(i, 60), 20), 330, "squat", 5);
@@ -89,6 +108,33 @@ run("Приседания (мелкие)", i => squat(170 - 55 * wave(i, 60), 20
 run("Отжимания (хорошие)", i => pushup(298 - 110 * wave(i, 60)), 330, "pushup", 5);
 run("Отжимания (провис)", i => pushup(298 - 110 * wave(i, 60), 90), 330, "pushup", 5);
 run("Подтягивания", i => pull(175 - 120 * wave(i, 70)), 350, "pullup", 5);
+
+run("Ягодичный мост", i => bridge(wave(i, 60)), 330, "bridge", 5);
+run("Австралийские подтягивания", i => row(170 - 90 * wave(i, 60)), 330, "row", 5);
+
+// --- связка: планка → 3 отжимания → планка, время планки не сбрасывается ---
+{
+  const ses = new Session(); let prev = null, reps = 0, ends = 0;
+  const frame = i => i < 150 ? pushup(298) : i < 330 ? pushup(298 - 110 * wave(i - 150, 60)) : pushup(298);
+  for (let i = 0; i < 480; i++) {
+    const t = i * 33, f = features(lmFrom(frame(i)), W, H);
+    const bad = frameProblem(f, prev); prev = f;
+    for (const e of (bad ? { ev: ses.bad(t) } : ses.frame(f, t)).ev) { if (e.type === "rep") reps++; if (e.type === "holdEnd") ends++; }
+  }
+  const plank = ses.engine("plank");
+  check("Связка: отжимания засчитаны", reps === 3, `→ ${reps}`);
+  const errs = ses.summary().flatMap(s => s.errors);
+  check("Связка: нет ложных замечаний к планке во время отжиманий", !errs.some(([txt]) => /рук/i.test(txt)), JSON.stringify(errs));
+  check("Связка: планка не прервалась", ends === 0 && plank.cur > 14, `→ текущее удержание ${plank.cur.toFixed(1)} с, прерываний ${ends}`);
+}
+// --- «нет» откатывает насчитанное ---
+{
+  const { ses } = simulate(i => squat(170 - 85 * wave(i, 60), 20), 200);
+  const before = ses.engine("squat").reps; const k = ses.reject(200 * 33);
+  check("«Нет» отменяет повторы", k === "squat" && ses.engine("squat").reps === 0 && ses.cur === null, `было ${before} → ${ses.engine("squat").reps}`);
+  simulate(i => squat(170 - 85 * wave(i, 60), 20), 200, ses, 200 * 33);
+  check("После «нет» элемент не предлагается 20 с", ses.cur !== "squat", `→ ${ses.cur}`);
+}
 
 // --- защита от ложных срабатываний ---
 let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -101,7 +147,7 @@ run("Скелет с неправдоподобными пропорциями",
 run("Нереально быстрые повторы", i => squat(170 - 85 * wave(i, 6), 20), 120, null);
 
 // --- голосовые команды ---
-for (const [txt, exp] of [["нет", "no"], ["Нет, не то", "no"], ["неправильно", "no"], ["нет это отжимания", "set:pushup"],
+for (const [txt, exp] of [["планка на локтях", "set:elbowplank"], ["ягодичный мост", "set:bridge"], ["австралийские подтягивания", "set:row"], ["нет", "no"], ["Нет, не то", "no"], ["неправильно", "no"], ["нет это отжимания", "set:pushup"],
   ["подтягивания", "set:pullup"], ["отжимания на брусьях", "set:dip"], ["боковая планка", "set:sideplank"], ["планка", "set:plank"],
   ["передний вис", "set:frontlever"], ["стойка на руках", "set:handstand"], ["авто", "auto"], ["пауза", "pause"], ["продолжить", "resume"], ["привет", "null"]]) {
   const r = parseCommand(txt); const got = r ? r.cmd + (r.key ? ":" + r.key : "") : "null";
