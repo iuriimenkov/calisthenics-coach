@@ -29,6 +29,12 @@
   .chip select { position:absolute; inset:0; opacity:0; width:100%; font-size:16px; cursor:pointer; }
   .ibtn { flex:none; width:46px; height:46px; border-radius:14px; border:0; background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); color:var(--text); font-size:20px; cursor:pointer; }
 
+  .nope { position:absolute; z-index:5; left:calc(var(--sl) + 10px); top:calc(var(--st) + 72px); display:none; align-items:center; border:0; border-radius:12px; padding:10px 14px;
+          background:rgba(120,30,30,.8); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); color:#fff; font-size:15px; font-weight:700; cursor:pointer; }
+  @media (max-width:400px) { .ibtn { width:42px; height:42px; font-size:18px; } .top { gap:6px; } }
+  .ibtn.off { opacity:.45; }
+  .paused { position:absolute; inset:0; z-index:6; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); font-size:30px; font-weight:800; flex-direction:column; gap:12px; }
+  .paused small { font-size:15px; font-weight:500; color:var(--muted); }
   /* показатели */
   .hud { position:absolute; right:calc(var(--sr) + 12px); top:calc(var(--st) + 68px); display:flex; flex-direction:column; align-items:flex-end; gap:10px; z-index:4; pointer-events:none; }
   .card { background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:18px; padding:10px 14px; text-align:center; min-width:112px; }
@@ -81,11 +87,13 @@
       <div class="name" id="exName">Встань в кадр</div>
       <select id="exSel" aria-label="Выбор элемента"></select>
     </div>
+    <button class="ibtn" id="btnMic" aria-label="Голосовые команды">🎙</button>
     <button class="ibtn" id="btnSound" aria-label="Звук">🔊</button>
     <button class="ibtn" id="btnFlip" aria-label="Сменить камеру">🔄</button>
     <button class="ibtn" id="btnStats" aria-label="Итоги">📊</button>
   </div>
 
+  <button class="nope" id="btnNo" aria-label="Не то упражнение">✖ Не то</button>
   <div class="hud" id="hud">
     <div class="card"><div class="count" id="count">0</div><div class="lbl" id="countLbl">повторов</div></div>
     <div class="card">
@@ -99,6 +107,7 @@
   </div>
 
   <div class="hintline" id="viewHint"></div>
+  <div class="paused" id="paused">⏸ Пауза<small>Скажи «продолжить» или коснись экрана</small></div>
   <div class="cue" id="cue"></div>
 
   <div class="sheet" id="sheet">
@@ -114,7 +123,8 @@
     <div class="steps">
       1. Поставь телефон на пол или опору в 2–3 м от себя.<br>
       2. Встань <b>боком</b> к камере, чтобы ты был виден целиком.<br>
-      3. Начинай упражнение — тренер сам поймёт, что ты делаешь.
+      3. Начинай упражнение — тренер сам поймёт, что ты делаешь.<br>
+      🎙 Если он ошибся — скажи <b>«нет»</b> или назови упражнение: <b>«отжимания»</b>, <b>«планка»</b>… Ещё можно: <b>«пауза»</b>, <b>«продолжить»</b>, <b>«авто»</b>.
     </div>
     <button class="go" id="btnGo">Начать</button>
     <div class="err" id="err"></div>
@@ -124,7 +134,7 @@
 
 <script type="module">
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
-import { EXERCISES, features, classify, Recognizer, makeEngine } from "./logic.js";
+import { EXERCISES, features, classify, Recognizer, makeEngine, frameProblem, PROBLEM_TEXT, parseCommand } from "./logic.js";
 
 const $ = id => document.getElementById(id);
 const video = $("video"), cv = $("cv"), ctx = cv.getContext("2d");
@@ -145,8 +155,13 @@ const rec = new Recognizer();
 const hist = [];                    // последние 1.5 с признаков
 const getEngine = k => engines[k] ||= makeEngine(k);
 
+const blocked = new Map();          // элементы, которые пользователь отверг: key → до какого времени
+let countAtDetect = 0, noiseT = [], paused = false;
+
 function setExercise(k, announce) {
   curKey = k; engine = k ? getEngine(k) : null;
+  countAtDetect = engine ? engine.count : 0;
+  $("btnNo").style.display = k ? "flex" : "none";
   const d = k ? EXERCISES[k] : null;
   $("exName").textContent = d ? d.name : "Встань в кадр";
   $("countLbl").textContent = d?.type === "hold" ? "секунд" : "повторов";
@@ -155,10 +170,33 @@ function setExercise(k, announce) {
   if (announce && d) speak(d.name, { priority: true });
   renderHud();
 }
-sel.onchange = () => {
-  mode = sel.value === "auto" ? "auto" : "manual";
+function setMode(m) {
+  mode = m; sel.value = m === "auto" ? "auto" : curKey;
   $("modeLbl").textContent = mode === "auto" ? "🤖 Авто" : "✋ Вручную · нажми, чтобы сменить";
-  if (mode === "manual") setExercise(sel.value, true); else setExercise(null);
+}
+// «Нет»: отменить неверно распознанный элемент и всё, что было насчитано с момента распознавания
+function reject() {
+  if (!curKey) { speak("Скажи название упражнения", { priority: true, color: "var(--accent)" }); return; }
+  const name = EXERCISES[curKey].name;
+  engine.undoTo(countAtDetect);
+  blocked.set(curKey, performance.now() + 20000);
+  rec.clear(); hist.length = 0;
+  setExercise(null); setMode("auto");
+  speak(`Понял, это не ${name.toLowerCase()}. Продолжай или назови упражнение`, { priority: true, color: "var(--accent)" });
+}
+function chooseManual(k) {
+  setExercise(k, true); setMode("manual"); rec.clear();
+}
+function setPaused(p) {
+  paused = p; $("paused").style.display = p ? "flex" : "none";
+  if (p) { engine?.interrupt(); speak("Пауза", { priority: true, color: "var(--accent)" }); }
+  else { hist.length = 0; rec.clear(); speak("Продолжаем", { priority: true }); }
+}
+$("btnNo").onclick = reject;
+$("paused").onclick = () => setPaused(false);
+
+sel.onchange = () => {
+  if (sel.value === "auto") { setExercise(null); setMode("auto"); } else chooseManual(sel.value);
 };
 
 // ---------- Голос ----------
@@ -176,7 +214,51 @@ function speak(text, { key = text, cooldown = 6000, priority = false, color } = 
   if (priority) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "ru-RU"; if (ruVoice) u.voice = ruVoice; u.rate = 1.1;
+  u.onend = u.onerror = () => { ttsEndT = performance.now(); };
+  ttsEndT = Infinity;
   speechSynthesis.speak(u);
+}
+let ttsEndT = 0;
+
+// ---------- Голосовые команды (микрофон) ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null, micOn = !!SR;
+if (!SR) $("btnMic").style.display = "none";
+function startMic() {
+  if (!SR || !micOn || recog) return;
+  try {
+    recog = new SR(); recog.lang = "ru-RU"; recog.continuous = true; recog.interimResults = false; recog.maxAlternatives = 3;
+    recog.onresult = e => {
+      const now = performance.now();
+      if ((hasTTS && speechSynthesis.speaking) || now - ttsEndT < 700) return; // это говорил сам тренер
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (!e.results[i].isFinal) continue;
+        let cmd = null, heard = "";
+        for (const alt of e.results[i]) { cmd = parseCommand(alt.transcript); heard = alt.transcript; if (cmd) break; }
+        if (cmd) runCommand(cmd, heard.trim());
+      }
+    };
+    recog.onerror = e => { if (e.error === "not-allowed" || e.error === "service-not-allowed") { micOn = false; updateMicBtn(); } };
+    recog.onend = () => { recog = null; if (running && micOn) setTimeout(startMic, 300); }; // браузер периодически сам выключает — перезапускаем
+    recog.start();
+  } catch { recog = null; }
+}
+function stopMic() { try { recog?.abort(); } catch {} recog = null; }
+function updateMicBtn() { $("btnMic").classList.toggle("off", !micOn); }
+$("btnMic").onclick = () => {
+  micOn = !micOn; updateMicBtn();
+  if (micOn) { startMic(); speak("Слушаю команды", { priority: true, color: "var(--accent)" }); } else { stopMic(); showCue("🎙 Голосовые команды выключены", "var(--muted)"); }
+};
+function runCommand(c, heard) {
+  showCue("🎙 «" + heard + "»", "var(--accent)");
+  if (c.cmd === "no") reject();
+  else if (c.cmd === "set") {
+    if (c.rejected && curKey && curKey !== c.key) { engine.undoTo(countAtDetect); blocked.set(curKey, performance.now() + 20000); }
+    chooseManual(c.key);
+  }
+  else if (c.cmd === "auto") { setExercise(null); setMode("auto"); rec.clear(); speak("Автораспознавание", { priority: true, color: "var(--accent)" }); }
+  else if (c.cmd === "pause" && !paused) setPaused(true);
+  else if (c.cmd === "resume" && paused) setPaused(false);
 }
 let cueT;
 function showCue(text, color) { const c = $("cue"); c.textContent = text; c.style.borderLeftColor = color; c.classList.add("show"); $("viewHint").classList.add("hide"); clearTimeout(cueT); cueT = setTimeout(() => { c.classList.remove("show"); $("viewHint").classList.remove("hide"); }, 2500); }
@@ -221,6 +303,11 @@ function handle(ev) {
     } else if (e.type === "partial") speak("Неполная амплитуда. " + e.text, { key: "partial", cooldown: 5000 });
     else if (e.type === "cue") speak(e.text, { key: e.key });
     else if (e.type === "time") speak(e.sec + " секунд", { priority: true, color: "var(--accent)" });
+    else if (e.type === "noise") {
+      rec.clear(); const now = performance.now(); noiseT = noiseT.filter(x => now - x < 3000); noiseT.push(now);
+      // много помех сразу после распознавания — скорее всего, распознал зря
+      if (mode === "auto" && noiseT.length >= 3 && engine && engine.count === countAtDetect) { setExercise(null); noiseT = []; }
+    }
     else if (e.type === "holdEnd") speak(`Удержание ${Math.round(e.sec)} секунд`, { key: "holdEnd", cooldown: 3000, color: "var(--accent)" });
   }
 }
@@ -252,6 +339,7 @@ $("btnGo").onclick = async () => {
     b.textContent = "Загружаю модель…"; if (!landmarker) landmarker = await loadModel();
     $("start").style.display = "none"; running = true; keepAwake();
     speak("Поехали! Начинай упражнение", { priority: true });
+    startMic(); updateMicBtn();
     requestAnimationFrame(loop);
   } catch (e) {
     const msg = e?.name === "NotAllowedError" ? "Нет доступа к камере. Разреши его в настройках браузера и нажми ещё раз." : (e?.message || String(e));
@@ -262,7 +350,7 @@ $("btnFlip").onclick = async () => { facing = facing === "user" ? "environment" 
 
 // ---------- Главный цикл ----------
 const BODY = PoseLandmarker.POSE_CONNECTIONS.filter(c => c.start >= 11 && c.end >= 11);
-let du = null, hudT = 0;
+let du = null, hudT = 0, prevF = null, badT = 0, lastGood = null;
 function loop() {
   if (!running) return;
   requestAnimationFrame(loop);
@@ -280,12 +368,26 @@ function loop() {
     return;
   }
   noPoseT = 0;
+  if (paused) return;
   const f = features(lm, W, H);
+  const problem = frameProblem(f, prevF); prevF = f;
+  if (problem) {
+    // ненадёжный кадр: ничего не считаем, начатый повтор сбрасываем
+    badT ||= t;
+    if (engine) { if (engine.def.type === "hold" && lastGood) handle(engine.update(lastGood, t, false)); else engine.interrupt(); }
+    hist.length = 0; rec.clear();
+    if (t - badT > 2000 && PROBLEM_TEXT[problem]) speak(PROBLEM_TEXT[problem], { key: "problem", cooldown: 10000, color: "var(--muted)" });
+    du.drawConnectors(lm, BODY, { color: "rgba(160,160,160,.6)", lineWidth: Math.max(2, W / 300) });
+    return;
+  }
+  if (t - badT < 400) return; // после помех ждём, пока картинка устоится
+  badT = 0; lastGood = f;
   hist.push({ t, f }); while (t - hist[0].t > 1500) hist.shift();
 
   if (mode === "auto") {
     const rg = k => { let a = Infinity, b = -Infinity; for (const h of hist) { a = Math.min(a, h.f[k]); b = Math.max(b, h.f[k]); } return b - a; };
-    const cand = classify(f, { elbow: rg("elbow"), knee: rg("knee"), hip: rg("hip") });
+    let cand = classify(f, { elbow: rg("elbow"), knee: rg("knee"), hip: rg("hip") });
+    if (cand && blocked.get(cand) > t) cand = null;
     const det = rec.push(cand, t);
     if (det && det !== curKey && !(engine && engine.busy)) {
       setExercise(det, true);

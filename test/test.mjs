@@ -1,5 +1,5 @@
 // Проверка распознавания и подсчёта на синтетических скелетах (вид сбоку, кадр 1000×1000)
-import { features, classify, Recognizer, makeEngine } from "../logic.js";
+import { features, classify, Recognizer, makeEngine, frameProblem, parseCommand } from "../logic.js";
 
 const W = 1000, H = 1000, rad = d => d * Math.PI / 180;
 function lmFrom(p) { // p: {nose, sh, el, wr, hip, kn, an} — одинаково для L и R (вид сбоку)
@@ -28,9 +28,9 @@ function pushup(s, sag = 0) { // s — высота плеч над полом
   return { wr, sh, an, el, hip, kn: mid(hip, an), nose: { x: 240, y: sh.y - 10 } };
 }
 function pull(elbowAng) { // вис/подтягивание, кисти на перекладине y=150
-  const wrL = { x: 430, y: 150 }, wrR = { x: 570, y: 150 };
+  const wrL = { x: 430, y: 40 }, wrR = { x: 570, y: 40 };
   const d = 2 * 150 * Math.sin(rad(elbowAng / 2)); // расстояние плечо–кисть
-  const sh = { x: 450, y: 150 + d }, el = { x: 450 + 150 * Math.cos(rad(elbowAng / 2)), y: 150 + d / 2 };
+  const sh = { x: 450, y: 40 + d }, el = { x: 450 + 150 * Math.cos(rad(elbowAng / 2)), y: 40 + d / 2 };
   const hip = { x: 450, y: sh.y + 250 }, kn = { x: 450, y: hip.y + 200 }, an = { x: 450, y: kn.y + 200 };
   return { wr: wrL, wr2: wrR, sh, el, hip, kn, an, nose: { x: 470, y: sh.y - 70 } };
 }
@@ -70,22 +70,43 @@ function run(name, frameFn, nFrames, expectKey, expectReps) {
   const rec = new Recognizer(); const hist = []; let cur = null, eng = null; const reps = [];
   for (let i = 0; i < nFrames; i++) {
     const t = i * 33;
-    const f = features(lmFrom(frameFn(i)), W, H);
+    const f = features(Array.isArray(frameFn(i)) ? frameFn(i) : lmFrom(frameFn(i)), W, H);
+    const bad = frameProblem(f, hist.at(-1)?.f);
+    if (bad) { if (eng) eng.interrupt(); hist.length = 0; rec.clear(); continue; }
     hist.push({ t, f }); while (t - hist[0].t > 1500) hist.shift();
     const rg = k => Math.max(...hist.map(h => h.f[k])) - Math.min(...hist.map(h => h.f[k]));
     const det = rec.push(classify(f, { elbow: rg("elbow"), knee: rg("knee"), hip: rg("hip") }), t);
-    if (det && det !== cur && !(eng && eng.busy)) { cur = det; eng = makeEngine(det); for (const h of hist) eng.update(h.f, h.t); continue; }
+    if (det && det !== cur && !(eng && eng.busy)) { if (process.env.DBG) console.log('  detect', det, 'at frame', i, 'hist', hist.length); cur = det; eng = makeEngine(det); for (const h of hist) eng.update(h.f, h.t); continue; }
     if (eng) for (const e of eng.update(f, t)) if (e.type === "rep") reps.push(e.score + (e.tip ? ` (${e.tip})` : ""));
   }
+  if (expectKey === null) { check(`${name}: ничего не распознано и не посчитано`, reps.length === 0, `→ ${cur}, ${reps.length} повт.`); return; }
   check(`${name}: распознан ${expectKey}`, cur === expectKey, `→ ${cur}`);
   check(`${name}: повторов ${expectReps}`, reps.length === expectReps, `→ ${reps.length}: ${reps.join(", ")}`);
 }
 const wave = (i, period) => (1 - Math.cos(2 * Math.PI * i / period)) / 2; // 0→1→0
-run("Приседания (хорошие)", i => squat(170 - 85 * wave(i, 60), 20), 300, "squat", 5);
-run("Приседания (мелкие)", i => squat(170 - 55 * wave(i, 60), 20), 300, "squat", 5);
-run("Отжимания (хорошие)", i => pushup(298 - 110 * wave(i, 60)), 300, "pushup", 5);
-run("Отжимания (провис)", i => pushup(298 - 110 * wave(i, 60), 90), 300, "pushup", 5);
+run("Приседания (хорошие)", i => squat(170 - 85 * wave(i, 60), 20), 330, "squat", 5);
+run("Приседания (мелкие)", i => squat(170 - 55 * wave(i, 60), 20), 330, "squat", 5);
+run("Отжимания (хорошие)", i => pushup(298 - 110 * wave(i, 60)), 330, "pushup", 5);
+run("Отжимания (провис)", i => pushup(298 - 110 * wave(i, 60), 90), 330, "pushup", 5);
 run("Подтягивания", i => pull(175 - 120 * wave(i, 70)), 350, "pullup", 5);
+
+// --- защита от ложных срабатываний ---
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+// дрожащий скелет (как при руке перед камерой): углы колена скачут 80–175° каждый кадр
+run("Дрожание точек", i => squat(80 + 95 * rnd(), 20), 120, null);
+// «рука крупным планом»: модель видит огромный кривой скелет с низкой видимостью ног
+run("Рука перед камерой", () => { const lm = lmFrom(squat(80 + 95 * rnd(), 20)); for (const i of [25, 26, 27, 28]) lm[i].visibility = 0.3; return lm; }, 120, null);
+run("Скелет с неправдоподобными пропорциями", () => { const p = squat(80 + 95 * rnd(), 20); p.kn = mid(p.hip, p.an, 0.1); return p; }, 120, null);
+// слишком быстрые «приседания» (5 раз в секунду) — не засчитываются
+run("Нереально быстрые повторы", i => squat(170 - 85 * wave(i, 6), 20), 120, null);
+
+// --- голосовые команды ---
+for (const [txt, exp] of [["нет", "no"], ["Нет, не то", "no"], ["неправильно", "no"], ["нет это отжимания", "set:pushup"],
+  ["подтягивания", "set:pullup"], ["отжимания на брусьях", "set:dip"], ["боковая планка", "set:sideplank"], ["планка", "set:plank"],
+  ["передний вис", "set:frontlever"], ["стойка на руках", "set:handstand"], ["авто", "auto"], ["пауза", "pause"], ["продолжить", "resume"], ["привет", "null"]]) {
+  const r = parseCommand(txt); const got = r ? r.cmd + (r.key ? ":" + r.key : "") : "null";
+  check(`голос «${txt}»`, got === exp, `→ ${got}`);
+}
 
 // --- статика: таймер и качество ---
 const h = makeEngine("plank"); let ev = [];

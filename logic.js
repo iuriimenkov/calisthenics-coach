@@ -43,8 +43,19 @@ export function features(lm, W, H) {
   const forearm = angle(S.sh, S.el, S.wr) < 125 && Math.abs(S.wr.y - S.el.y) < 0.1 * len;
   const support = forearm ? S.el : S.wr;
   const torsoV = angle({ x: S.hip.x, y: S.hip.y - 100 }, S.hip, S.sh); // 0 = корпус вертикально, 180 = вниз головой
+  // --- надёжность кадра (защита от ложных срабатываний) ---
+  const key = [S.sh, S.el, S.wr, S.hip, S.kn, S.an];
+  const vis6 = Math.min(...key.map(p => p.v));
+  const inFrame = key.every(p => p.x > -0.03 * W && p.x < 1.03 * W && p.y > -0.03 * H && p.y < 1.03 * H);
+  const xs = key.map(p => p.x / W), ys = key.map(p => p.y / H);
+  const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const ratio = (a, b) => (b > 1 ? a / b : 99);
+  const thigh = dist(S.hip, S.kn), shin = dist(S.kn, S.an), upper = dist(S.sh, S.el), fore = dist(S.el, S.wr);
+  const okR = (r, lo, hi) => r > lo && r < hi;
+  const anatomyOK = okR(ratio(thigh, shin), 0.5, 2) && okR(ratio(upper, fore), 0.5, 2) && okR(ratio(torso, thigh), 0.45, 2.6) && okR(ratio(torso, upper), 0.8, 3.5);
+  const pts = key.map(p => ({ x: p.x, y: p.y }));
   return {
-    conf, feetVis, len, torso,
+    conf, feetVis, len, torso, vis6, inFrame, size, anatomyOK, pts,
     elbow: angle(S.sh, S.el, S.wr),
     knee: angle(S.hip, S.kn, S.an),
     kneeMin: bothKnees ? Math.min(kL, kR) : angle(S.hip, S.kn, S.an),
@@ -176,6 +187,29 @@ export const EXERCISES = {
       { k: "legs", w: 0.2, fn: f => f.knee, good: 165, bad: 145, msg: "Ноги прямые" }] },
 };
 
+// ---------- Защита: можно ли доверять кадру ----------
+// Возвращает null, если кадр надёжный, иначе причину.
+export function frameProblem(f, prev) {
+  if (f.vis6 < 0.55 || f.conf < 0.5) return "hidden";          // часть тела не видна / закрыта
+  if (!f.inFrame) return "outside";                             // тело выходит за кадр
+  if (f.size < 0.22) return "far";                              // человек слишком маленький / это не человек
+  if (!f.anatomyOK) return "anatomy";                           // пропорции не похожи на человека (рука, предмет)
+  if (prev) {                                                   // скелет «телепортировался» между кадрами
+    let m = 0; for (let i = 0; i < f.pts.length; i++) m += Math.hypot(f.pts[i].x - prev.pts[i].x, f.pts[i].y - prev.pts[i].y);
+    if (m / f.pts.length / f.len > 0.18) return "jump";
+    // суставы не могут поворачиваться на десятки градусов за один кадр
+    if (Math.max(Math.abs(f.knee - prev.knee), Math.abs(f.elbow - prev.elbow), Math.abs(f.hip - prev.hip)) > 40) return "jump";
+  }
+  return null;
+}
+export const PROBLEM_TEXT = {
+  hidden: "Встань так, чтобы всё тело было видно",
+  outside: "Отойди дальше, ты выходишь за кадр",
+  far: "Подойди ближе к камере",
+  anatomy: "Не вижу человека целиком",
+  jump: null,
+};
+
 // ---------- Распознавание элемента по одному кадру ----------
 // rng: размах движения суставов за последние ~1.5 с {elbow, knee, hip}
 export function classify(f, rng) {
@@ -218,6 +252,7 @@ export function classify(f, rng) {
 // Сглаживание: элемент считается распознанным, если доминирует ~1 секунду
 export class Recognizer {
   constructor(windowMs = 1000, minShare = 0.7) { this.buf = []; this.win = windowMs; this.share = minShare; }
+  clear() { this.buf = []; }
   push(key, t) {
     this.buf.push({ key, t });
     while (this.buf.length && t - this.buf[0].t > this.win) this.buf.shift();
@@ -240,16 +275,36 @@ function weighted(parts) {
 
 export class RepEngine {
   constructor(key) { this.key = key; this.def = EXERCISES[key]; this.reset(); }
-  reset() { this.reps = 0; this.scores = []; this.state = "up"; this.topMax = null; this.rep = null; this.lastScore = null; this.liveScore = 1; }
+  reset() { this.reps = 0; this.scores = []; this.lastScore = null; this.lastRepT = -1e9; this.interrupt(); }
+  // сброс текущей фазы (после ненадёжных кадров) — начатый повтор не засчитывается
+  interrupt() { this.state = "up"; this.topMax = null; this.rep = null; this.buf = []; this.speeds = []; this.prevRaw = null; this.prevT = null; this.belowT = null; this.aboveT = null; this.liveScore = 1; }
+  // отмена повторов (команда «нет»)
+  undoTo(n) { this.reps = Math.min(this.reps, n); this.scores.length = this.reps; this.lastScore = this.scores.at(-1) ?? null; this.interrupt(); }
   // возвращает список событий: {type:'rep', n, score, tip} | {type:'cue', key, text} | {type:'partial', text}
   update(f, t) {
-    const d = this.def, m = d.metric(f), ev = [];
+    const d = this.def, ev = [];
+    // медиана последних 5 кадров — гасит дрожание точек
+    const raw = d.metric(f);
+    // скорость изменения угла: дрожание точек даёт сотни градусов в секунду
+    if (this.prevRaw != null && t > this.prevT) {
+      const v = Math.abs(raw - this.prevRaw) / ((t - this.prevT) / 1000);
+      this.speeds.push(v); if (this.speeds.length > 5) this.speeds.shift();
+    }
+    this.prevRaw = raw; this.prevT = t;
+    if (this.speeds.length >= 3 && this.speeds.reduce((a, b) => a + b, 0) / this.speeds.length > 450) {
+      this.interrupt(); return [{ type: "noise" }];
+    }
+    this.buf.push(raw); if (this.buf.length > 5) this.buf.shift();
+    const m = [...this.buf].sort((a, b) => a - b)[this.buf.length >> 1];
     if (this.state === "up") {
       this.topMax = Math.max(this.topMax ?? m, m);
-      if (m < d.down) {
-        this.state = "down";
-        this.rep = { t0: t, best: {}, worst: {}, worstF: {}, topMax: this.topMax };
-      }
+      if (m < d.down) {                         // фаза «вниз» должна продержаться ≥120 мс
+        this.belowT ??= t;
+        if (t - this.belowT >= 120) {
+          this.state = "down"; this.aboveT = null;
+          this.rep = { t0: this.belowT, best: {}, worst: {}, worstF: {}, topMax: this.topMax };
+        }
+      } else this.belowT = null;
     }
     if (this.state === "down") {
       const r = this.rep;
@@ -265,10 +320,13 @@ export class RepEngine {
         }
       }
       this.liveScore = live.length ? weighted(live) : 1;
-      if (m > d.up) {
-        this.state = "up";
+      if (m > d.up) this.aboveT ??= t; else this.aboveT = null;
+      if (this.aboveT != null && t - this.aboveT >= 100) {
+        this.state = "up"; this.belowT = null;
         this.topMax = m;
         const dur = (t - r.t0) / 1000;
+        // слишком быстро для человека — это шум, не повтор
+        if (dur < (d.minRep ?? 0.6) || t - this.lastRepT < 350) { ev.push({ type: "noise" }); return ev; }
         const req = d.checks.find(c => c.k === d.req);
         if ((r.best[d.req] ?? 0) <= 0.01) {
           ev.push({ type: "partial", text: msgOf(req, f) });
@@ -284,21 +342,24 @@ export class RepEngine {
           const score = Math.round(weighted(parts) * 100);
           const weakest = parts.reduce((a, b) => (b.s * b.w < a.s * a.w ? b : a));
           const tip = weakest.s < 0.6 ? msgOf(weakest.c, r.worstF[weakest.c.k] || f) : null;
-          this.reps++; this.scores.push(score); this.lastScore = score;
+          this.reps++; this.scores.push(score); this.lastScore = score; this.lastRepT = t;
           ev.push({ type: "rep", n: this.reps, score, tip });
         }
-      } else if (t - r.t0 > 10000) { this.state = "up"; this.topMax = m; } // застрял внизу — сброс
+      } else if (t - r.t0 > 10000) this.interrupt(); // застрял внизу — сброс
     } else this.liveScore = 1;
     return ev;
   }
   get avg() { return this.scores.length ? Math.round(this.scores.reduce((a, b) => a + b, 0) / this.scores.length) : null; }
   get busy() { return this.state === "down"; }
+  get count() { return this.reps; }
 }
 
 // ---------- Удержание статики с оценкой качества ----------
 export class HoldEngine {
   constructor(key) { this.key = key; this.def = EXERCISES[key]; this.reset(); }
   reset() { this.total = 0; this.cur = 0; this.best = 0; this.qSum = 0; this.q = null; this.lostAt = null; this.lastT = null; this.nextCall = 5; this.lastScore = null; }
+  interrupt() { this.lastT = null; }
+  undoTo() { this.total = Math.max(0, this.total - this.cur); this.qSum = Math.max(0, this.qSum - (this.q ?? 0) * this.cur); this.cur = 0; this.nextCall = 5; }
   update(f, t, inPose = true) {
     const ev = [];
     const dt = this.lastT == null ? 0 : Math.min(0.25, (t - this.lastT) / 1000);
@@ -327,6 +388,46 @@ export class HoldEngine {
   get avg() { return this.total > 0.5 ? Math.round(this.qSum / this.total * 100) : null; }
   get liveScore() { return this.q ?? 1; }
   get busy() { return false; }
+  get count() { return this.cur; }
 }
 
 export const makeEngine = key => EXERCISES[key].type === "reps" ? new RepEngine(key) : new HoldEngine(key);
+
+// ---------- Голосовые команды ----------
+// Возвращает {cmd:'no'|'auto'|'pause'|'resume'|'set', key?}
+const ALIASES = [
+  ["pike", ["пайк", "пике", "пик отжим", "отжимания уголком"]],
+  ["dip", ["брус", "брусья", "брусьях", "дипс"]],
+  ["pushup", ["отжиман", "отжимания", "отжимание"]],
+  ["squat", ["присед"]],
+  ["lunge", ["выпад"]],
+  ["pullup", ["подтяг"]],
+  ["legraise", ["подъём ног", "подъем ног", "ноги в висе", "подъемы ног", "подъёмы ног"]],
+  ["sideplank", ["боковая планка", "боковую планку", "боковой планк"]],
+  ["plank", ["планк"]],
+  ["lsit", ["уголок", "уголка", "л сит", "эл сит", "l-sit", "lsit"]],
+  ["handstand", ["стойка на руках", "стойку на руках", "стойка", "хендстенд"]],
+  ["frontlever", ["передний вис", "фронт левер", "фронтлевер", "передний рычаг"]],
+  ["backlever", ["задний вис", "бэк левер", "бек левер", "задний рычаг"]],
+  ["hang", ["вис"]],
+  ["hollow", ["лодочк", "холлоу"]],
+  ["planche", ["планш"]],
+  ["flag", ["флаг"]],
+];
+export function parseCommand(text) {
+  const t = " " + text.toLowerCase().replace(/ё/g, "е").replace(/[.,!?]/g, " ").replace(/\s+/g, " ").trim() + " ";
+  if (/ (нет|не то|не это|неправильно|неверно|ошибка|отмена|не так) /.test(t)) {
+    // «нет, это отжимания» — сразу переключаем
+    const rest = t.replace(/ (нет|не то|не это|неправильно|неверно|ошибка|отмена|не так) /, " ");
+    const k = findAlias(rest); return k ? { cmd: "set", key: k, rejected: true } : { cmd: "no" };
+  }
+  if (/ (авто|автомат|сам определ)/.test(t)) return { cmd: "auto" };
+  if (/ (пауза|стоп|хватит|перерыв)/.test(t)) return { cmd: "pause" };
+  if (/ (продолж|дальше|поехали|старт|начали)/.test(t)) return { cmd: "resume" };
+  const k = findAlias(t); return k ? { cmd: "set", key: k } : null;
+}
+function findAlias(t) {
+  const norm = t.replace(/ё/g, "е");
+  for (const [k, words] of ALIASES) if (words.some(w => norm.includes(w.replace(/ё/g, "е")))) return k;
+  return null;
+}
