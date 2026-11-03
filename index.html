@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AI-тренер">
+<title>AI-тренер по калистенике</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#0f1115; --panel:rgba(20,23,30,.78); --text:#f1f3f7; --muted:#9aa3b2; --good:#3ddc84; --mid:#ffc94d; --bad:#ff5c5c; --accent:#5b9dff;
+          --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px); --sl:env(safe-area-inset-left,0px); --sr:env(safe-area-inset-right,0px); }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; background:#000; color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden; overscroll-behavior:none; }
+  #app { position:fixed; inset:0; }
+  video, #cv { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .mirror { transform:scaleX(-1); }
+
+  /* верхняя панель */
+  .top { position:absolute; top:calc(var(--st) + 10px); left:calc(var(--sl) + 10px); right:calc(var(--sr) + 10px); display:flex; gap:8px; align-items:center; z-index:5; }
+  .chip { flex:1; min-width:0; position:relative; background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:14px; padding:9px 12px; }
+  .chip .mode { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .chip .name { font-size:17px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chip select { position:absolute; inset:0; opacity:0; width:100%; font-size:16px; cursor:pointer; }
+  .ibtn { flex:none; width:46px; height:46px; border-radius:14px; border:0; background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); color:var(--text); font-size:20px; cursor:pointer; }
+
+  /* показатели */
+  .hud { position:absolute; right:calc(var(--sr) + 12px); top:calc(var(--st) + 68px); display:flex; flex-direction:column; align-items:flex-end; gap:10px; z-index:4; pointer-events:none; }
+  .card { background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:18px; padding:10px 14px; text-align:center; min-width:112px; }
+  .count { font-size:54px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
+  .lbl { font-size:12px; color:var(--muted); margin-top:3px; }
+  .ring { position:relative; width:112px; height:112px; }
+  .ring svg { width:100%; height:100%; transform:rotate(-90deg); }
+  .ring .pct { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .ring .pct b { font-size:25px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .ring .pct span { font-size:11px; color:var(--muted); }
+  .avg { font-size:13px; color:var(--muted); }
+
+  /* подсказка */
+  .cue { position:absolute; left:calc(var(--sl) + 12px); right:calc(var(--sr) + 12px); bottom:calc(var(--sb) + 14px); z-index:4; background:var(--panel); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+         border-radius:16px; padding:14px 16px; font-size:19px; font-weight:650; border-left:5px solid var(--accent); transition:opacity .25s; opacity:0; pointer-events:none; }
+  .cue.show { opacity:1; background:rgba(20,23,30,.95); }
+  .cue.show ~ .hintline, .hintline.hide { opacity:0; }
+  .hintline { position:absolute; left:calc(var(--sl) + 12px); bottom:calc(var(--sb) + 14px); z-index:3; font-size:13px; color:var(--muted); background:var(--panel); padding:7px 11px; border-radius:10px; max-width:70%; }
+
+  /* стартовый экран */
+  .start { position:absolute; inset:0; z-index:10; background:radial-gradient(circle at 50% 30%, #1d2533, #0b0d11 70%); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:calc(var(--st) + 24px) 24px calc(var(--sb) + 24px); text-align:center; gap:18px; overflow:auto; }
+  .start h1 { margin:0; font-size:28px; }
+  .start p { margin:0; color:var(--muted); font-size:15px; line-height:1.5; max-width:420px; }
+  .go { border:0; border-radius:999px; background:var(--accent); color:#fff; font-size:22px; font-weight:750; padding:20px 46px; cursor:pointer; box-shadow:0 10px 30px rgba(91,157,255,.35); }
+  .go:disabled { opacity:.6; }
+  .steps { text-align:left; font-size:14px; color:#cfd5df; line-height:1.7; background:rgba(255,255,255,.05); border-radius:14px; padding:12px 16px; max-width:420px; }
+  .err { color:var(--bad); font-size:14px; max-width:420px; }
+
+  /* итоги */
+  .sheet { position:absolute; left:0; right:0; bottom:0; z-index:8; background:#151922; border-radius:22px 22px 0 0; padding:18px 18px calc(var(--sb) + 18px); max-height:70%; overflow:auto; transform:translateY(105%); transition:transform .25s; }
+  .sheet.open { transform:none; }
+  .sheet h2 { margin:0 0 10px; font-size:19px; display:flex; justify-content:space-between; align-items:center; }
+  .sheet table { width:100%; border-collapse:collapse; font-size:15px; }
+  .sheet td { padding:9px 4px; border-bottom:1px solid #232835; }
+  .sheet td:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .sheet .empty { color:var(--muted); font-size:14px; padding:10px 0; }
+  .sbtn { border:0; border-radius:12px; padding:10px 14px; background:#262c3a; color:var(--text); font-size:15px; cursor:pointer; }
+  .q-good { color:var(--good); } .q-mid { color:var(--mid); } .q-bad { color:var(--bad); }
+  @media (orientation:landscape) and (max-height:500px) { .ring { width:92px; height:92px; } .ring .pct b { font-size:24px; } .count { font-size:42px; } .card { min-width:96px; padding:8px 12px; } .hud { top:calc(var(--st) + 64px); } }
+</style>
+</head>
+<body>
+<div id="app">
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="cv"></canvas>
+
+  <div class="top">
+    <div class="chip">
+      <div class="mode" id="modeLbl">🤖 Авто</div>
+      <div class="name" id="exName">Встань в кадр</div>
+      <select id="exSel" aria-label="Выбор элемента"></select>
+    </div>
+    <button class="ibtn" id="btnSound" aria-label="Звук">🔊</button>
+    <button class="ibtn" id="btnFlip" aria-label="Сменить камеру">🔄</button>
+    <button class="ibtn" id="btnStats" aria-label="Итоги">📊</button>
+  </div>
+
+  <div class="hud" id="hud">
+    <div class="card"><div class="count" id="count">0</div><div class="lbl" id="countLbl">повторов</div></div>
+    <div class="card">
+      <div class="ring">
+        <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="#2a3040" stroke-width="10"/>
+          <circle id="ringArc" cx="50" cy="50" r="42" fill="none" stroke="var(--good)" stroke-width="10" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264"/></svg>
+        <div class="pct"><b id="pct">—</b><span id="pctLbl">качество</span></div>
+      </div>
+      <div class="avg" id="avg">среднее —</div>
+    </div>
+  </div>
+
+  <div class="hintline" id="viewHint"></div>
+  <div class="cue" id="cue"></div>
+
+  <div class="sheet" id="sheet">
+    <h2>Итоги тренировки <button class="sbtn" id="btnClose">Закрыть</button></h2>
+    <div id="statsBody"></div>
+    <div style="margin-top:14px; display:flex; gap:8px;"><button class="sbtn" id="btnReset">Начать заново</button></div>
+  </div>
+
+  <div class="start" id="start">
+    <div style="font-size:54px">🤸</div>
+    <h1>AI-тренер по калистенике</h1>
+    <p>Видит твою технику через камеру, сам узнаёт упражнение, считает повторы и время, оценивает качество в процентах и подсказывает голосом.</p>
+    <div class="steps">
+      1. Поставь телефон на пол или опору в 2–3 м от себя.<br>
+      2. Встань <b>боком</b> к камере, чтобы ты был виден целиком.<br>
+      3. Начинай упражнение — тренер сам поймёт, что ты делаешь.
+    </div>
+    <button class="go" id="btnGo">Начать</button>
+    <div class="err" id="err"></div>
+    <p style="font-size:12px">Видео обрабатывается прямо на устройстве и никуда не отправляется.</p>
+  </div>
+</div>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+import { EXERCISES, features, classify, Recognizer, makeEngine } from "./logic.js";
+
+const $ = id => document.getElementById(id);
+const video = $("video"), cv = $("cv"), ctx = cv.getContext("2d");
+
+// ---------- Меню элементов ----------
+const sel = $("exSel");
+sel.add(new Option("🤖 Автораспознавание", "auto"));
+for (const [label, type] of [["Динамика — повторы", "reps"], ["Статика — удержание", "hold"]]) {
+  const g = document.createElement("optgroup"); g.label = label;
+  for (const [k, d] of Object.entries(EXERCISES)) if (d.type === type) g.appendChild(new Option(d.name, k));
+  sel.appendChild(g);
+}
+
+// ---------- Состояние ----------
+let mode = "auto", curKey = null, engine = null;
+const engines = {};                 // по одному счётчику на каждый элемент за тренировку
+const rec = new Recognizer();
+const hist = [];                    // последние 1.5 с признаков
+const getEngine = k => engines[k] ||= makeEngine(k);
+
+function setExercise(k, announce) {
+  curKey = k; engine = k ? getEngine(k) : null;
+  const d = k ? EXERCISES[k] : null;
+  $("exName").textContent = d ? d.name : "Встань в кадр";
+  $("countLbl").textContent = d?.type === "hold" ? "секунд" : "повторов";
+  $("viewHint").textContent = d ? "📷 " + d.view : "";
+  $("viewHint").style.display = d ? "" : "none";
+  if (announce && d) speak(d.name, { priority: true });
+  renderHud();
+}
+sel.onchange = () => {
+  mode = sel.value === "auto" ? "auto" : "manual";
+  $("modeLbl").textContent = mode === "auto" ? "🤖 Авто" : "✋ Вручную · нажми, чтобы сменить";
+  if (mode === "manual") setExercise(sel.value, true); else setExercise(null);
+};
+
+// ---------- Голос ----------
+let muted = false, ruVoice = null;
+const hasTTS = "speechSynthesis" in window;
+function pickVoice() { const v = speechSynthesis.getVoices(); ruVoice = v.find(x => /^ru/i.test(x.lang)) || null; }
+if (hasTTS) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+const lastSaid = {}; let lastAny = 0;
+function speak(text, { key = text, cooldown = 6000, priority = false, color } = {}) {
+  const now = performance.now();
+  if (!priority && (now - (lastSaid[key] ?? -1e9) < cooldown || now - lastAny < 2000)) return;
+  lastSaid[key] = now; lastAny = now;
+  showCue(text, color || (priority ? "var(--good)" : "var(--bad)"));
+  if (muted || !hasTTS) return;
+  if (priority) speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ru-RU"; if (ruVoice) u.voice = ruVoice; u.rate = 1.1;
+  speechSynthesis.speak(u);
+}
+let cueT;
+function showCue(text, color) { const c = $("cue"); c.textContent = text; c.style.borderLeftColor = color; c.classList.add("show"); $("viewHint").classList.add("hide"); clearTimeout(cueT); cueT = setTimeout(() => { c.classList.remove("show"); $("viewHint").classList.remove("hide"); }, 2500); }
+$("btnSound").onclick = () => { muted = !muted; $("btnSound").textContent = muted ? "🔇" : "🔊"; if (muted && hasTTS) speechSynthesis.cancel(); };
+
+// ---------- Показатели ----------
+const qClass = q => q >= 80 ? "good" : q >= 60 ? "mid" : "bad";
+const qColor = q => `var(--${qClass(q)})`;
+function renderHud() {
+  const e = engine;
+  let count = 0, q = null, avg = null, qLbl = "качество";
+  if (e) {
+    if (e.def.type === "reps") { count = e.reps; q = e.lastScore; avg = e.avg; qLbl = "последний"; }
+    else { count = Math.floor(e.cur); q = e.lastScore; avg = e.avg; qLbl = "сейчас"; }
+  }
+  $("count").textContent = count;
+  $("pct").textContent = q == null ? "—" : q + "%";
+  $("pctLbl").textContent = qLbl;
+  $("avg").textContent = "среднее " + (avg == null ? "—" : avg + "%");
+  const arc = $("ringArc");
+  arc.style.strokeDashoffset = 264 * (1 - (q ?? 0) / 100);
+  arc.style.stroke = q == null ? "transparent" : qColor(q);
+}
+function renderStats() {
+  const rows = Object.values(engines).filter(e => e.def.type === "reps" ? e.reps > 0 : e.total >= 1);
+  if (!rows.length) { $("statsBody").innerHTML = '<div class="empty">Пока ничего не выполнено.</div>'; return; }
+  $("statsBody").innerHTML = "<table>" + rows.map(e => {
+    const res = e.def.type === "reps" ? `${e.reps} повт.` : `${Math.round(e.total)} с · рекорд ${Math.round(e.best)} с`;
+    const a = e.avg; return `<tr><td>${e.def.name}</td><td>${res}</td><td class="q-${qClass(a ?? 0)}">${a ?? "—"}%</td></tr>`;
+  }).join("") + "</table>";
+}
+$("btnStats").onclick = () => { renderStats(); $("sheet").classList.add("open"); };
+$("btnClose").onclick = () => $("sheet").classList.remove("open");
+$("btnReset").onclick = () => { for (const k in engines) delete engines[k]; setExercise(mode === "auto" ? null : curKey); renderStats(); };
+
+// ---------- События тренировки ----------
+function handle(ev) {
+  for (const e of ev) {
+    if (e.type === "rep") {
+      speak(String(e.n), { priority: true, color: qColor(e.score) });
+      if (e.tip) setTimeout(() => speak(e.tip, { key: "tip" + e.tip, cooldown: 8000 }), 700);
+    } else if (e.type === "partial") speak("Неполная амплитуда. " + e.text, { key: "partial", cooldown: 5000 });
+    else if (e.type === "cue") speak(e.text, { key: e.key });
+    else if (e.type === "time") speak(e.sec + " секунд", { priority: true, color: "var(--accent)" });
+    else if (e.type === "holdEnd") speak(`Удержание ${Math.round(e.sec)} секунд`, { key: "holdEnd", cooldown: 3000, color: "var(--accent)" });
+  }
+}
+
+// ---------- Камера, модель, экран ----------
+let landmarker = null, stream = null, facing = "user", running = false, lastVT = -1, noPoseT = 0, wakeLock = null;
+async function loadModel() {
+  const fs = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  const opts = delegate => ({ baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task", delegate },
+    runningMode: "VIDEO", numPoses: 1, minPoseDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+  try { return await PoseLandmarker.createFromOptions(fs, opts("GPU")); }
+  catch { return await PoseLandmarker.createFromOptions(fs, opts("CPU")); }
+}
+async function startCamera() {
+  stream?.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } } });
+  video.srcObject = stream; await video.play();
+  const m = facing === "user"; video.classList.toggle("mirror", m); cv.classList.toggle("mirror", m);
+}
+async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && running) keepAwake(); });
+
+$("btnGo").onclick = async () => {
+  const b = $("btnGo"); b.disabled = true; $("err").textContent = "";
+  if (hasTTS) { const u = new SpeechSynthesisUtterance(""); speechSynthesis.speak(u); } // разблокировка голоса (iOS)
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("Браузер не даёт доступ к камере. Открой ссылку в Safari или Chrome (адрес должен начинаться с https://).");
+    b.textContent = "Включаю камеру…"; await startCamera();
+    b.textContent = "Загружаю модель…"; if (!landmarker) landmarker = await loadModel();
+    $("start").style.display = "none"; running = true; keepAwake();
+    speak("Поехали! Начинай упражнение", { priority: true });
+    requestAnimationFrame(loop);
+  } catch (e) {
+    const msg = e?.name === "NotAllowedError" ? "Нет доступа к камере. Разреши его в настройках браузера и нажми ещё раз." : (e?.message || String(e));
+    $("err").textContent = msg; b.textContent = "Попробовать снова"; b.disabled = false;
+  }
+};
+$("btnFlip").onclick = async () => { facing = facing === "user" ? "environment" : "user"; if (running) try { await startCamera(); } catch {} };
+
+// ---------- Главный цикл ----------
+const BODY = PoseLandmarker.POSE_CONNECTIONS.filter(c => c.start >= 11 && c.end >= 11);
+let du = null, hudT = 0;
+function loop() {
+  if (!running) return;
+  requestAnimationFrame(loop);
+  if (video.readyState < 2 || video.currentTime === lastVT) return;
+  lastVT = video.currentTime;
+  const W = video.videoWidth, H = video.videoHeight;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; du = new DrawingUtils(ctx); }
+  const t = performance.now();
+  const res = landmarker.detectForVideo(video, t);
+  ctx.clearRect(0, 0, W, H);
+  const lm = res.landmarks?.[0];
+  if (!lm) {
+    noPoseT ||= t;
+    if (t - noPoseT > 3000) speak("Не вижу тебя, встань в кадр целиком", { key: "nopose", cooldown: 10000 });
+    return;
+  }
+  noPoseT = 0;
+  const f = features(lm, W, H);
+  hist.push({ t, f }); while (t - hist[0].t > 1500) hist.shift();
+
+  if (mode === "auto") {
+    const rg = k => { let a = Infinity, b = -Infinity; for (const h of hist) { a = Math.min(a, h.f[k]); b = Math.max(b, h.f[k]); } return b - a; };
+    const cand = classify(f, { elbow: rg("elbow"), knee: rg("knee"), hip: rg("hip") });
+    const det = rec.push(cand, t);
+    if (det && det !== curKey && !(engine && engine.busy)) {
+      setExercise(det, true);
+      for (const h of hist.slice(0, -1)) engine.update(h.f, h.t, true); // не теряем начало первого повтора
+    }
+    if (engine) handle(engine.update(f, t, engine.def.type === "hold" ? cand === curKey || cand === null && engine.cur > 0 : true));
+  } else if (engine) handle(engine.update(f, t, true));
+
+  if (f.conf < 0.5) speak("Встань так, чтобы тело было видно целиком", { key: "vis", cooldown: 10000 });
+
+  // скелет: цвет = текущая техника
+  const live = engine ? engine.liveScore : 1;
+  const col = live >= 0.8 ? "#3ddc84" : live >= 0.6 ? "#ffc94d" : "#ff5c5c";
+  du.drawConnectors(lm, BODY, { color: col, lineWidth: Math.max(3, W / 200) });
+  du.drawLandmarks(lm.slice(11), { color: "#fff", fillColor: col, radius: Math.max(3, W / 260), lineWidth: 1 });
+  if (t - hudT > 150) { hudT = t; renderHud(); }
+}
+
+// офлайн-кэш и установка на главный экран
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
