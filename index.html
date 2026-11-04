@@ -101,39 +101,6 @@
   .ex .acts { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
   .stat { font-size:13px; color:var(--muted); margin-top:8px; }
 
-  /* чат */
-  #tab-ai { display:none; flex-direction:column; }
-  #tab-ai.active { display:flex; }
-  .ai-head { padding:calc(var(--st) + 12px) calc(var(--sr) + 14px) 8px calc(var(--sl) + 14px); display:flex; align-items:center; justify-content:space-between; }
-  .ai-head h1 { margin:0; font-size:22px; }
-  .ai-head small { display:block; font-size:12px; color:var(--muted); font-weight:400; margin-top:2px; }
-  .msgs { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:6px calc(var(--sr) + 14px) 10px calc(var(--sl) + 14px); display:flex; flex-direction:column; gap:10px; }
-  .msg { max-width:88%; padding:10px 14px; border-radius:18px; font-size:15px; line-height:1.5; word-wrap:break-word; }
-  .msg p { margin:0 0 6px; } .msg p:last-child { margin:0; } .msg ul { margin:4px 0 6px; padding-left:20px; }
-  .msg.me { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:6px; }
-  .msg.bot { align-self:flex-start; background:var(--card); border:1px solid var(--line); border-bottom-left-radius:6px; }
-  .msg.bot .tools { margin-top:6px; display:flex; gap:6px; }
-  .msg.bot .tools button { border:0; background:none; color:var(--muted); font-size:13px; padding:2px 4px; cursor:pointer; }
-  .msg.err { border-color:rgba(255,92,92,.5); }
-  .setup { background:linear-gradient(135deg,#1b2a45,#1a1f2b); border:1px solid #2c3d5e; border-radius:16px; padding:14px 16px; font-size:14px; line-height:1.55; }
-  .setup b { font-size:15px; }
-  .quick { display:flex; gap:8px; overflow-x:auto; padding:4px calc(var(--sr) + 14px) 8px calc(var(--sl) + 14px); scrollbar-width:none; }
-  .quick::-webkit-scrollbar { display:none; }
-  .inrow { display:flex; gap:8px; padding:8px calc(var(--sr) + 12px) 10px calc(var(--sl) + 12px); border-top:1px solid var(--line); background:#0f1219; align-items:flex-end; }
-  .inrow textarea { flex:1; resize:none; border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:20px; padding:11px 14px; font-size:16px; font-family:inherit; max-height:120px; line-height:1.35; }
-  .inrow button { flex:none; width:44px; height:44px; border-radius:50%; border:0; background:var(--card); color:var(--text); font-size:19px; cursor:pointer; }
-  .inrow button.send { background:var(--accent); color:#fff; }
-  .dots::after { content:"…"; animation:blink 1s infinite; } @keyframes blink { 50% { opacity:.2; } }
-  /* настройки ИИ */
-  .modal { position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.6); display:none; align-items:flex-end; justify-content:center; }
-  .modal.open { display:flex; }
-  .modal .box { background:#151922; width:100%; max-width:560px; border-radius:22px 22px 0 0; padding:18px 18px calc(var(--sb) + 18px); max-height:92%; overflow:auto; }
-  .modal h2 { margin:0 0 12px; font-size:19px; display:flex; justify-content:space-between; align-items:center; }
-  .modal label { display:block; font-size:13px; color:var(--muted); margin:12px 0 5px; }
-  .modal input, .modal select { width:100%; border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:12px; padding:12px; font-size:16px; }
-  .modal .note { font-size:13px; color:#c7cdd8; line-height:1.5; background:rgba(255,255,255,.04); border-radius:12px; padding:10px 12px; margin-top:12px; }
-  .modal .row { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
-  .modal a { color:var(--accent); }
 </style>
 </head>
 <body>
@@ -173,7 +140,6 @@
     <h2>Итоги тренировки <button class="sbtn" id="btnClose">Закрыть</button></h2>
     <div id="statsBody"></div>
     <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="sbtn primary" id="btnReview">💬 Разобрать с тренером</button>
       <button class="sbtn" id="btnReset">Начать заново</button>
     </div>
   </div>
@@ -200,58 +166,15 @@
   <div id="exList"></div>
 </section>
 
-<!-- ================= ИИ-ТРЕНЕР ================= -->
-<section class="screen" id="tab-ai">
-  <div class="ai-head">
-    <h1>ИИ-тренер<small id="aiStatus">не подключён</small></h1>
-    <div style="display:flex; gap:8px">
-      <button class="ibtn" id="btnClear" aria-label="Очистить чат" style="background:var(--card)">🗑</button>
-      <button class="ibtn" id="btnAiSet" aria-label="Настройки ИИ" style="background:var(--card)">⚙️</button>
-    </div>
-  </div>
-  <div class="msgs" id="msgs"></div>
-  <div class="quick" id="quick"></div>
-  <div class="inrow">
-    <button id="btnDictate" aria-label="Надиктовать">🎙</button>
-    <textarea id="aiInput" rows="1" placeholder="Спроси про технику, ошибки, программу…"></textarea>
-    <button class="send" id="btnSend" aria-label="Отправить">➤</button>
-  </div>
-</section>
-
-<div class="modal" id="aiModal">
-  <div class="box">
-    <h2>Подключение ИИ <button class="sbtn" id="btnAiClose">Закрыть</button></h2>
-    <label for="aiProv">Сервис</label>
-    <select id="aiProv"></select>
-    <div class="note" id="aiNote"></div>
-    <label for="aiKey">Ключ API</label>
-    <input id="aiKey" type="password" autocomplete="off" placeholder="Вставь ключ сюда">
-    <div id="aiAdv">
-      <label for="aiBase">Адрес API</label>
-      <input id="aiBase" placeholder="https://…/v1" autocomplete="off">
-      <label for="aiModel">Модель</label>
-      <input id="aiModel" autocomplete="off">
-    </div>
-    <div class="row">
-      <button class="sbtn primary" id="btnAiSave">Сохранить и проверить</button>
-      <a class="sbtn" id="aiKeyLink" href="#" target="_blank" rel="noopener" style="text-decoration:none">Получить ключ ↗</a>
-    </div>
-    <div class="note" id="aiTest" style="display:none"></div>
-    <div class="note">🔒 Ключ хранится только на этом устройстве и отправляется только выбранному сервису. Данные о тренировке уходят в ИИ, только когда ты задаёшь вопрос.</div>
-  </div>
-</div>
-
 <nav class="tabs">
   <button class="on" data-tab="train"><b>🏋️</b>Тренировка</button>
   <button data-tab="lib"><b>📚</b>Упражнения</button>
-  <button data-tab="ai"><b>💬</b>ИИ-тренер</button>
 </nav>
 
 <script type="module">
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 import { EXERCISES, features, frameProblem, PROBLEM_TEXT, parseCommand, Session, familyOf } from "./logic.js";
 import { GROUPS, LIB, LEVELS } from "./library.js";
-import { PROVIDERS, loadSettings, saveSettings, isConfigured, systemPrompt, ask, localReview, localTechnique, md } from "./coach-ai.js";
 
 const $ = id => document.getElementById(id);
 const video = $("video"), cv = $("cv"), ctx = cv.getContext("2d");
@@ -268,7 +191,6 @@ function showTab(t) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === "tab-" + t));
   if (t === "train") resumeTraining();
   if (t === "lib") renderLib();
-  if (t === "ai") { renderAiStatus(); renderQuick(); scrollMsgs(); }
 }
 
 // ================= Голос (озвучка) =================
@@ -373,7 +295,6 @@ function renderStats() {
 $("btnStats").onclick = () => { renderStats(); $("sheet").classList.add("open"); };
 $("btnClose").onclick = () => $("sheet").classList.remove("open");
 $("btnReset").onclick = () => { ses.reset(); shownKey = undefined; syncExercise(); renderStats(); };
-$("btnReview").onclick = () => { $("sheet").classList.remove("open"); showTab("ai"); sendMessage("Разбери мою тренировку: что получилось и что исправить?"); };
 
 // ================= События тренировки =================
 function handle(ev) {
@@ -394,10 +315,10 @@ function handle(ev) {
 
 // ================= Голосовые команды =================
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recog = null, micOn = !!SR, dictating = false;
-if (!SR) { $("btnMic").style.display = "none"; $("btnDictate").style.display = "none"; }
+let recog = null, micOn = !!SR;
+if (!SR) $("btnMic").style.display = "none";
 function startMic() {
-  if (!SR || !micOn || recog || dictating || tab !== "train" || !running) return;
+  if (!SR || !micOn || recog || tab !== "train" || !running) return;
   try {
     recog = new SR(); recog.lang = "ru-RU"; recog.continuous = true; recog.interimResults = false; recog.maxAlternatives = 3;
     recog.onresult = e => {
@@ -539,128 +460,15 @@ function renderLib() {
         <h4>Техника</h4><ol>${l.how.map(x => `<li>${x}</li>`).join("")}</ol>
         <h4>Частые ошибки</h4><ul>${l.mistakes.map(x => `<li>${x}</li>`).join("")}</ul>
         <h4>Прогрессия</h4><div>⬇️ Проще: ${l.easier}</div><div>⬆️ Сложнее: ${l.harder}</div>
-        <div class="acts"><button class="sbtn primary" data-start="${k}">▶ Начать с камерой</button><button class="sbtn" data-ask="${k}">💬 Спросить тренера</button></div>
+        <div class="acts"><button class="sbtn primary" data-start="${k}">▶ Начать с камерой</button></div>
       </div></details>`;
   }).join("");
   $("exList").querySelectorAll("[data-start]").forEach(b => b.onclick = async () => {
     chooseManual(b.dataset.start); showTab("train");
     if (!started) await startTraining();
   });
-  $("exList").querySelectorAll("[data-ask]").forEach(b => b.onclick = () => {
-    const k = b.dataset.ask; showTab("ai"); sendMessage(`Расскажи про технику: ${EXERCISES[k].name}. Как сделать правильно и как прогрессировать?`, k);
-  });
 }
 
-// ================= ИИ-тренер =================
-let ai = loadSettings(), chat = [], busy = false, abortCtl = null;
-try { chat = JSON.parse(localStorage.getItem("coach-chat") || "[]"); } catch {}
-const saveChat = () => { try { localStorage.setItem("coach-chat", JSON.stringify(chat.slice(-40))); } catch {} };
-function renderAiStatus() {
-  const p = PROVIDERS[ai.provider];
-  $("aiStatus").textContent = isConfigured(ai) ? "подключён · " + (p?.name.split(" — ")[0] || "свой сервис") : "без ИИ: разбор тренировки и справка по технике";
-}
-function scrollMsgs() { const m = $("msgs"); m.scrollTop = m.scrollHeight; }
-function bubble(role, html, opts = {}) {
-  const d = document.createElement("div"); d.className = "msg " + (role === "user" ? "me" : "bot") + (opts.err ? " err" : "");
-  d.innerHTML = html; $("msgs").appendChild(d); scrollMsgs(); return d;
-}
-function addTools(d, text) {
-  const t = document.createElement("div"); t.className = "tools";
-  t.innerHTML = `<button>🔊 Прочитать</button><button>📋 Копировать</button>`;
-  const [bRead, bCopy] = t.querySelectorAll("button");
-  bRead.onclick = () => { if (hasTTS) { speechSynthesis.cancel(); say(text.replace(/[*#•]/g, ""), 1.05); } };
-  bCopy.onclick = async () => { try { await navigator.clipboard.writeText(text); bCopy.textContent = "✓ Скопировано"; } catch {} };
-  d.appendChild(t);
-}
-function renderChat() {
-  $("msgs").innerHTML = "";
-  if (!isConfigured(ai)) {
-    const s = document.createElement("div"); s.className = "setup";
-    s.innerHTML = `<b>Подключи ИИ, чтобы обсуждать что угодно</b><br>Уже сейчас без подключения работают разбор тренировки и справка по технике любого упражнения. Для свободного разговора нужен бесплатный ключ — это займёт пару минут.<div style="margin-top:10px"><button class="sbtn primary" id="btnSetup">Подключить ИИ</button></div>`;
-    $("msgs").appendChild(s); s.querySelector("#btnSetup").onclick = openAiSettings;
-  }
-  if (!chat.length) bubble("bot", md("Привет! Я твой тренер. Спроси про технику любого элемента, попроси разобрать тренировку или составить программу. 💪"));
-  for (const m of chat) { const d = bubble(m.role, m.role === "user" ? md(m.content) : md(m.content)); if (m.role === "assistant") addTools(d, m.content); }
-}
-function renderQuick() {
-  const items = ["Разбери мою тренировку", "Как научиться подтягиваться с нуля?", "Составь программу на неделю", "Как исправить провис в планке?", "Как делать стойку на руках?", "Болят запястья в отжиманиях"];
-  $("quick").innerHTML = items.map(x => `<button class="pill">${x}</button>`).join("");
-  $("quick").querySelectorAll(".pill").forEach(b => b.onclick = () => sendMessage(b.textContent));
-}
-async function sendMessage(text, focusKey) {
-  text = text.trim(); if (!text || busy) return;
-  $("aiInput").value = ""; autoGrow();
-  chat.push({ role: "user", content: text }); bubble("user", md(text));
-  const summary = ses.summary();
-  const wantsReview = /разбер|разбор|мою тренировк|мои ошибк|как я/i.test(text);
-  // без подключения — отвечаем сами
-  if (!isConfigured(ai)) {
-    let ans = wantsReview ? localReview(summary) : localTechnique(text);
-    if (!ans) ans = "Без подключённого ИИ я умею разбирать тренировку и рассказывать технику упражнений — например, спроси «как делать отжимания». Для свободного разговора подключи ИИ: ⚙️ вверху справа.";
-    chat.push({ role: "assistant", content: ans }); const d = bubble("bot", md(ans)); addTools(d, ans); saveChat(); return;
-  }
-  busy = true; $("btnSend").textContent = "■";
-  const d = bubble("bot", '<span class="dots">Думаю</span>'); let acc = "";
-  const history = chat.slice(-12).map(m => ({ role: m.role, content: m.content }));
-  abortCtl = new AbortController();
-  try {
-    await ask(ai, [{ role: "system", content: systemPrompt(summary, focusKey) }, ...history], delta => { acc += delta; d.innerHTML = md(acc); scrollMsgs(); }, abortCtl.signal);
-    if (!acc) acc = "Сервис вернул пустой ответ. Попробуй ещё раз.";
-    d.innerHTML = md(acc); chat.push({ role: "assistant", content: acc }); addTools(d, acc); saveChat();
-  } catch (e) {
-    if (e.name === "AbortError") { if (acc) { chat.push({ role: "assistant", content: acc }); saveChat(); } }
-    else {
-      d.classList.add("err");
-      const fallback = wantsReview ? "\n\nПока вот разбор без ИИ:\n\n" + localReview(summary) : "";
-      d.innerHTML = md("⚠️ " + e.message + fallback);
-      chat.pop(); // не храним вопрос без ответа
-    }
-  } finally { busy = false; abortCtl = null; $("btnSend").textContent = "➤"; scrollMsgs(); }
-}
-$("btnSend").onclick = () => busy ? abortCtl?.abort() : sendMessage($("aiInput").value);
-$("aiInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage($("aiInput").value); } });
-function autoGrow() { const t = $("aiInput"); t.style.height = "auto"; t.style.height = Math.min(120, t.scrollHeight) + "px"; }
-$("aiInput").addEventListener("input", autoGrow);
-$("btnClear").onclick = () => { chat = []; saveChat(); renderChat(); };
-// диктовка вопроса голосом
-$("btnDictate").onclick = () => {
-  if (!SR || dictating) return;
-  const r = new SR(); r.lang = "ru-RU"; r.interimResults = true; dictating = true; $("btnDictate").textContent = "⏺";
-  const base = $("aiInput").value ? $("aiInput").value + " " : "";
-  r.onresult = e => { let s = ""; for (const x of e.results) s += x[0].transcript; $("aiInput").value = base + s; autoGrow(); };
-  r.onend = r.onerror = () => { dictating = false; $("btnDictate").textContent = "🎙"; };
-  try { r.start(); } catch { dictating = false; $("btnDictate").textContent = "🎙"; }
-};
-// настройки подключения
-const prov = $("aiProv");
-for (const [k, p] of Object.entries(PROVIDERS)) prov.add(new Option(p.name, k));
-function fillAiForm() {
-  const p = PROVIDERS[prov.value];
-  $("aiNote").textContent = p.note;
-  $("aiKeyLink").style.display = p.keyUrl ? "" : "none"; $("aiKeyLink").href = p.keyUrl || "#";
-  $("aiBase").placeholder = p.base || "https://…/v1"; $("aiModel").placeholder = p.model || "название модели";
-}
-function openAiSettings() {
-  prov.value = PROVIDERS[ai.provider] ? ai.provider : "openrouter";
-  $("aiKey").value = ai.key; $("aiBase").value = ai.base; $("aiModel").value = ai.model;
-  $("aiTest").style.display = "none"; fillAiForm(); $("aiModal").classList.add("open");
-}
-prov.onchange = () => { $("aiBase").value = ""; $("aiModel").value = ""; fillAiForm(); };
-$("btnAiSet").onclick = openAiSettings;
-$("btnAiClose").onclick = () => $("aiModal").classList.remove("open");
-$("btnAiSave").onclick = async () => {
-  ai = { provider: prov.value, key: $("aiKey").value.trim(), base: $("aiBase").value.trim(), model: $("aiModel").value.trim() };
-  saveSettings(ai); renderAiStatus();
-  const box = $("aiTest"); box.style.display = "block";
-  if (!isConfigured(ai)) { box.textContent = prov.value === "custom" ? "Укажи ключ, адрес API и модель." : "Вставь ключ."; return; }
-  box.textContent = "Проверяю подключение…";
-  try {
-    let got = ""; await ask(ai, [{ role: "user", content: "Ответь одним словом: работает" }], d => got += d);
-    box.innerHTML = "✅ Подключено! Ответ сервиса: «" + (got.trim().slice(0, 60) || "…") + "»";
-    renderChat();
-  } catch (e) { box.textContent = "❌ " + e.message; }
-};
-renderChat(); renderAiStatus();
 
 // офлайн-кэш и установка на главный экран
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
