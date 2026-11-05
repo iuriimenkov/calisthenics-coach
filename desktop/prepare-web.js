@@ -18,7 +18,7 @@ for (const f of ["index.html", "logic.js", "library.js", "icon.svg", "icon-192.p
 }
 
 // MediaPipe из node_modules
-const mp = path.dirname(require.resolve("@mediapipe/tasks-vision/package.json"));
+const mp = path.join(__dirname, "node_modules", "@mediapipe", "tasks-vision");
 fs.cpSync(path.join(mp, "wasm"), path.join(VENDOR, "wasm"), { recursive: true });
 fs.copyFileSync(path.join(mp, "vision_bundle.mjs"), path.join(VENDOR, "vision_bundle.mjs"));
 
