@@ -1,0 +1,52 @@
+{
+  "name": "ai-trener",
+  "productName": "AI Trener",
+  "version": "1.0.0",
+  "description": "AI-тренер по калистенике: распознаёт упражнения через камеру, считает повторы и оценивает технику",
+  "author": "iuriimenkov",
+  "license": "UNLICENSED",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "prepare-web": "node prepare-web.js",
+    "start": "node prepare-web.js && electron ."
+  },
+  "devDependencies": {
+    "@mediapipe/tasks-vision": "0.10.14",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.github.iuriimenkov.calisthenics",
+    "productName": "AI Trener",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "web/**/*", "package.json"],
+    "asar": true,
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AI-тренер",
+      "installerLanguages": ["ru_RU"],
+      "language": "1049",
+      "artifactName": "AI-Trener-Setup-${version}.exe"
+    },
+    "mac": {
+      "target": "dir",
+      "icon": "build/icon.png",
+      "identity": null,
+      "category": "public.app-category.healthcare-fitness",
+      "extendInfo": {
+        "CFBundleDisplayName": "AI-тренер",
+        "NSCameraUsageDescription": "Камера нужна, чтобы видеть технику упражнений. Видео обрабатывается только на этом компьютере и никуда не отправляется.",
+        "NSMicrophoneUsageDescription": "Микрофон не используется для записи."
+      }
+    }
+  }
+}

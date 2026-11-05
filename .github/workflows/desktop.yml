@@ -1,0 +1,60 @@
+name: Установщики для Windows и Mac
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: node prepare-web.js
+
+      - name: Установщик Windows (.exe)
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win --publish never
+
+      - name: Установщик Mac (.dmg)
+        if: runner.os == 'macOS'
+        run: |
+          npx electron-builder --mac --arm64 --x64 --publish never
+          bash make-dmg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ runner.os }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+          if-no-files-found: error
+
+      - name: Выложить в Releases
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AI-тренер ${{ github.ref_name }}
+          body: |
+            **Windows:** скачай `AI-Trener-Setup-….exe` и запусти. Если появится «Система Windows защитила ваш компьютер» — нажми «Подробнее» → «Выполнить в любом случае».
+
+            **Mac:** скачай `…-mac-apple-silicon.dmg` (Mac на M1/M2/M3/M4) или `…-mac-intel.dmg` (старые Mac на Intel). Открой, перетащи «AI Trener» в «Программы». При первом запуске: Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть».
+          files: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg

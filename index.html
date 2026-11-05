@@ -314,7 +314,9 @@ function handle(ev) {
 }
 
 // ================= Голосовые команды =================
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+// в настольной версии распознавание речи браузера не работает (нужны серверы Google) — отключаем
+const SR = /Electron/.test(navigator.userAgent) ? null : (window.SpeechRecognition || window.webkitSpeechRecognition);
+let srNetErr = 0;
 let recog = null, micOn = !!SR;
 if (!SR) $("btnMic").style.display = "none";
 function startMic() {
@@ -331,7 +333,11 @@ function startMic() {
         if (cmd) runCommand(cmd, heard.trim());
       }
     };
-    recog.onerror = e => { if (e.error === "not-allowed" || e.error === "service-not-allowed") { micOn = false; updateMicBtn(); } };
+    recog.onerror = e => {
+      if (e.error === "network") srNetErr++;
+      // нет доступа или сервис распознавания недоступен — выключаем, чтобы не перезапускаться бесконечно
+      if (e.error === "not-allowed" || e.error === "service-not-allowed" || srNetErr >= 3) { micOn = false; updateMicBtn(); }
+    };
     recog.onend = () => { recog = null; if (running && micOn && tab === "train") setTimeout(startMic, 300); };
     recog.start();
   } catch { recog = null; }
