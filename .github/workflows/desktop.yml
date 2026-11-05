@@ -2,7 +2,8 @@ name: Установщики для Windows и Mac
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: ["desktop/**", "index.html", "logic.js", "library.js", ".github/workflows/desktop.yml"]
   workflow_dispatch:
 
 permissions:
@@ -38,6 +39,11 @@ jobs:
           npx electron-builder --mac --arm64 --x64 --publish never
           bash make-dmg.sh
 
+      - name: Версия
+        id: ver
+        shell: bash
+        run: echo "v=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@v4
         with:
           name: installers-${{ runner.os }}
@@ -47,10 +53,12 @@ jobs:
           if-no-files-found: error
 
       - name: Выложить в Releases
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          name: AI-тренер ${{ github.ref_name }}
+          tag_name: ${{ steps.ver.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          name: AI-тренер ${{ steps.ver.outputs.v }}
           body: |
             **Windows:** скачай `AI-Trener-Setup-….exe` и запусти. Если появится «Система Windows защитила ваш компьютер» — нажми «Подробнее» → «Выполнить в любом случае».
 
